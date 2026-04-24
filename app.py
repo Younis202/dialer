@@ -15,6 +15,8 @@ from dotenv import load_dotenv
 
 import db
 import providers as prv
+import realtime as rt
+from geo import COUNTRY_GEO
 
 load_dotenv()
 db.init()
@@ -810,11 +812,150 @@ def api_stats():
 
 
 # ════════════════════════════════════════════════
-# Socket events
+# 🌍 World map / geo
 # ════════════════════════════════════════════════
+@app.route("/api/geo/countries")
+def api_geo_countries():
+    """Country code -> [lat, lng, capital]. Used by the 3D globe."""
+    return jsonify({k: {"lat": v[0], "lng": v[1], "capital": v[2]}
+                    for k, v in COUNTRY_GEO.items()})
+
+@app.route("/api/geo/calls")
+def api_geo_calls():
+    """Recent calls with destination coordinates for the globe arcs."""
+    with db.conn() as c:
+        rows = c.execute("""
+            SELECT c.to_number, c.duration, c.cost, c.started_at, c.provider,
+                   ct.country AS contact_country, ct.name AS contact_name
+            FROM calls c
+            LEFT JOIN contacts ct ON ct.id = c.contact_id
+            ORDER BY c.started_at DESC LIMIT 200
+        """).fetchall()
+    out = []
+    for r in rows:
+        res = parse_phone(r["to_number"] or "")
+        cc = res[1] if len(res) >= 2 else ""
+        geo = COUNTRY_GEO.get((cc or "").upper())
+        if geo:
+            out.append({
+                "to": r["to_number"], "country_code": cc, "lat": geo[0], "lng": geo[1],
+                "city": geo[2], "duration": r["duration"], "cost": r["cost"],
+                "ts": r["started_at"], "provider": r["provider"],
+                "name": r["contact_name"] or "",
+            })
+    return jsonify(out)
+
+
+# ════════════════════════════════════════════════
+# 💸 Cost optimizer — pick cheapest provider
+# ════════════════════════════════════════════════
+@app.route("/api/cost/route")
+def api_cost_route():
+    cc = request.args.get("country_code", "US")
+    options = rt.optimize_route(cc, prv.PROVIDERS)
+    return jsonify({"country_code": cc, "options": options,
+                    "best": options[0] if options else None})
+
+
+# ════════════════════════════════════════════════
+# 🤖 AI Assistant
+# ════════════════════════════════════════════════
+@app.route("/api/ai/summarize", methods=["POST"])
+def api_ai_summarize():
+    data = request.get_json() or {}
+    call_id = data.get("call_id")
+    transcript, contact, duration = data.get("transcript", ""), data.get("contact", ""), int(data.get("duration", 0))
+    if call_id and not transcript:
+        with db.conn() as c:
+            r = c.execute(
+                "SELECT c.transcript, c.duration, ct.name FROM calls c "
+                "LEFT JOIN contacts ct ON ct.id=c.contact_id WHERE c.id=?",
+                (call_id,)).fetchone()
+            if r:
+                transcript = r["transcript"] or ""
+                duration = r["duration"] or 0
+                contact = r["name"] or contact
+    summary = rt.ai_summarize(transcript, contact, duration)
+    if call_id:
+        with db.conn() as c:
+            c.execute("UPDATE calls SET notes = COALESCE(notes,'') || ? WHERE id=?",
+                      (f"\n--- AI Summary ---\n{summary}\n", call_id))
+    return jsonify({"summary": summary, "ai_enabled": rt._has_anthropic()})
+
+@app.route("/api/ai/coach", methods=["POST"])
+def api_ai_coach():
+    data = request.get_json() or {}
+    tips = rt.ai_coach(data.get("transcript", ""), data.get("contact", ""))
+    return jsonify({"tips": tips, "ai_enabled": rt._has_anthropic()})
+
+@app.route("/api/ai/status")
+def api_ai_status():
+    return jsonify({"anthropic": rt._has_anthropic(),
+                    "model": os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")})
+
+
+# ════════════════════════════════════════════════
+# 🌐 DIALR Network (WebRTC P2P presence)
+# ════════════════════════════════════════════════
+@app.route("/api/network/users")
+def api_network_users():
+    return jsonify(rt.list_peers())
+
+
+# ════════════════════════════════════════════════
+# 📱 PWA — manifest & service worker
+# ════════════════════════════════════════════════
+@app.route("/manifest.json")
+def manifest():
+    return jsonify({
+        "name": "DIALR PRO",
+        "short_name": "DIALR",
+        "description": "World's most legendary dialer — almost-free unlimited calls anywhere.",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#080b10",
+        "theme_color": "#00e5b0",
+        "orientation": "any",
+        "icons": [
+            {"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"},
+        ],
+    })
+
+@app.route("/sw.js")
+def service_worker():
+    return Response(
+        """const C='dialr-v1';
+self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll([
+  '/','/static/styles.css','/static/app.js','/static/icon.svg'
+]).catch(()=>{})));self.skipWaiting();});
+self.addEventListener('activate',e=>{e.waitUntil(self.clients.claim());});
+self.addEventListener('fetch',e=>{
+  const u=new URL(e.request.url);
+  if(u.pathname.startsWith('/api/')||u.pathname.startsWith('/socket.io/'))return;
+  e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{
+    if(res.ok&&u.origin===location.origin){const cl=res.clone();caches.open(C).then(c=>c.put(e.request,cl));}
+    return res;
+  }).catch(()=>caches.match('/'))));
+});""",
+        mimetype="application/javascript",
+    )
+
+
+# ════════════════════════════════════════════════
+# Socket events  (transcript + WebRTC P2P signaling)
+# ════════════════════════════════════════════════
+from flask import request as flask_request
+from flask_socketio import join_room, leave_room
+
 @socketio.on("connect")
 def on_connect():
-    emit("connected", {"ok": True, "ts": now_ms()})
+    emit("connected", {"ok": True, "ts": now_ms(), "sid": flask_request.sid})
+
+@socketio.on("disconnect")
+def on_disconnect():
+    sid = flask_request.sid
+    rt.unregister_peer(sid)
+    socketio.emit("network_users", rt.list_peers())
 
 @socketio.on("transcript")
 def on_transcript(data):
@@ -828,6 +969,59 @@ def on_transcript(data):
                 (text + "\n", call_id),
             )
     emit("transcript_update", data, broadcast=True)
+
+# ── WebRTC P2P signaling ────────────────────────────────
+@socketio.on("p2p_register")
+def p2p_register(data):
+    sid = flask_request.sid
+    handle = (data or {}).get("handle", "").strip() or sid[:6]
+    country = (data or {}).get("country", "")
+    rt.register_peer(sid, handle, country)
+    emit("p2p_registered", {"sid": sid, "handle": handle})
+    socketio.emit("network_users", rt.list_peers())
+
+@socketio.on("p2p_offer")
+def p2p_offer(data):
+    """Caller -> Callee: SDP offer. data = {to, from_handle, sdp, call_type}"""
+    target = (data or {}).get("to")
+    if target:
+        socketio.emit("p2p_offer", {
+            "from": flask_request.sid,
+            "from_handle": (data or {}).get("from_handle", ""),
+            "sdp": data.get("sdp"),
+            "call_type": data.get("call_type", "audio"),
+        }, room=target)
+
+@socketio.on("p2p_answer")
+def p2p_answer(data):
+    target = (data or {}).get("to")
+    if target:
+        socketio.emit("p2p_answer", {
+            "from": flask_request.sid,
+            "sdp": data.get("sdp"),
+        }, room=target)
+
+@socketio.on("p2p_ice")
+def p2p_ice(data):
+    target = (data or {}).get("to")
+    if target:
+        socketio.emit("p2p_ice", {
+            "from": flask_request.sid,
+            "candidate": data.get("candidate"),
+        }, room=target)
+
+@socketio.on("p2p_hangup")
+def p2p_hangup(data):
+    target = (data or {}).get("to")
+    if target:
+        socketio.emit("p2p_hangup", {"from": flask_request.sid}, room=target)
+    rt.set_in_call(flask_request.sid, False)
+
+@socketio.on("p2p_reject")
+def p2p_reject(data):
+    target = (data or {}).get("to")
+    if target:
+        socketio.emit("p2p_reject", {"from": flask_request.sid}, room=target)
 
 
 # ════════════════════════════════════════════════

@@ -117,6 +117,8 @@ function navigate(page) {
   const titles = {
     dialer: ["Dialer", "Make calls anywhere in the world"],
     power:  ["Power Dialer", "Auto-dial through any list"],
+    network:["DIALR Network", "Free unlimited browser-to-browser calls — anywhere, forever"],
+    world:  ["World Map", "Every call you've ever made — visualised in 3D"],
     contacts: ["Contacts", "Manage everyone you call"],
     lists:    ["Lists", "Group contacts by campaign"],
     history:  ["Call History", "Every call, recorded & taggable"],
@@ -143,6 +145,7 @@ function navigate(page) {
   if (page === "settings") renderSettings();
   if (page === "analytics") loadAnalytics();
   if (page === "power") renderPower();
+  if (window.DIALR && window.DIALR.onPageChange) window.DIALR.onPageChange(page);
 }
 
 // ── System / Provider ───────────────────────────────────
@@ -1057,7 +1060,7 @@ function initShortcuts() {
 
 // ── Boot ────────────────────────────────────────────────
 async function boot() {
-  $$(".nav-item").forEach(n => n.addEventListener("click", () => navigate(n.dataset.page)));
+  $$(".nav-item").forEach(n => n.addEventListener("click", () => { location.hash = n.dataset.page; navigate(n.dataset.page); }));
   $("#modal-back").addEventListener("click", e => { if (e.target.id === "modal-back") closeModal(); });
   initSocket();
   initShortcuts();
@@ -1156,12 +1159,482 @@ async function boot() {
   $("#power-start-btn").addEventListener("click", startPower);
   $("#power-stop-btn").addEventListener("click", stopPower);
 
-  // Initial route
-  navigate("dialer");
+  // Initial route — supports deep link via #page
+  const initialPage = (location.hash || "").replace("#", "") || "dialer";
+  navigate(initialPage);
+  window.addEventListener("hashchange", () => {
+    const p = (location.hash || "").replace("#", ""); if (p) navigate(p);
+  });
 
   // Auto-refresh stats every 20s
   setInterval(loadRightPaneData, 20000);
+
+  // Expose internals for legendary extension module
+  window.DIALR = window.DIALR || {};
+  Object.assign(window.DIALR, {
+    socket, navigate, toast,
+    refreshCalls: loadCalls,
+    refreshContacts: renderContacts,
+    refreshRight: loadRightPaneData,
+  });
+  document.dispatchEvent(new Event("dialr:ready"));
 }
 
 window.addEventListener("DOMContentLoaded", boot);
+})();
+
+/* ═══════════════════════════════════════════════════════════
+ *   DIALR LEGENDARY EXTENSIONS — v2
+ *   (background · i18n · voice · AI · P2P · globe · waveform · cost)
+ * ═══════════════════════════════════════════════════════════ */
+(() => {
+"use strict";
+
+const $  = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+
+document.addEventListener("dialr:ready", boot);
+
+function boot() {
+  initBackground();
+  initLanguage();
+  initAI();
+  initVoiceCommands();
+  initP2P();
+  initWorldGlobe();
+  initWaveform();
+  initCostOptimizer();
+  patchRouting();
+}
+
+/* ── 1. Animated network-particle background ──────────── */
+function initBackground() {
+  const c = document.getElementById("bg-canvas");
+  if (!c) return;
+  const ctx = c.getContext("2d");
+  let W = 0, H = 0, parts = [];
+  const N = 60;
+  function resize() {
+    W = c.width = window.innerWidth;
+    H = c.height = window.innerHeight;
+    parts = Array.from({length: N}, () => ({
+      x: Math.random()*W, y: Math.random()*H,
+      vx: (Math.random()-.5)*0.3, vy: (Math.random()-.5)*0.3,
+      r: Math.random()*1.5+0.5,
+    }));
+  }
+  resize(); window.addEventListener("resize", resize);
+  function tick() {
+    ctx.clearRect(0,0,W,H);
+    for (const p of parts) {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x<0||p.x>W) p.vx*=-1;
+      if (p.y<0||p.y>H) p.vy*=-1;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle = "rgba(0,229,176,0.5)"; ctx.fill();
+    }
+    for (let i=0;i<parts.length;i++) for (let j=i+1;j<parts.length;j++) {
+      const a=parts[i], b=parts[j];
+      const dx=a.x-b.x, dy=a.y-b.y, d2=dx*dx+dy*dy;
+      if (d2<22000) {
+        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+        ctx.strokeStyle = `rgba(0,229,176,${0.2*(1-d2/22000)})`;
+        ctx.lineWidth = 0.5; ctx.stroke();
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+/* ── 2. Language switcher (EN/AR + RTL) ───────────────── */
+const I18N = {
+  ar: {
+    "DIAL":"اتصال","Dialer":"الاتصال","Power Dial":"اتصال جماعي",
+    "DIALR Network":"شبكة DIALR","World Map":"خريطة العالم",
+    "DATA":"البيانات","Contacts":"جهات الاتصال","Lists":"القوائم","History":"السجل",
+    "MESSAGING":"المراسلة","SMS":"الرسائل","Scheduled":"مجدول","Scripts":"السكربتس",
+    "Voicemail":"البريد الصوتي","TOOLS":"الأدوات","Analytics":"التحليلات",
+    "Do Not Call":"عدم الاتصال","Settings":"الإعدادات",
+    "YOUR DIALR ID":"رقم DIALR الخاص بك",
+    "DESTINATIONS REACHED":"الوجهات المتصلة",
+    "Share this ID with anyone — they can call you 100% free, anywhere in the world.":
+      "شارك هذا الرقم مع أي شخص — يقدر يكلمك ببلاش 100% من أي مكان في العالم.",
+  }
+};
+function initLanguage() {
+  const saved = localStorage.getItem("dialr_lang") || "en";
+  applyLang(saved);
+  $$(".lang-switch button").forEach(b => {
+    b.addEventListener("click", () => {
+      $$(".lang-switch button").forEach(x => x.classList.toggle("active", x===b));
+      applyLang(b.dataset.lang);
+    });
+  });
+}
+function applyLang(lang) {
+  localStorage.setItem("dialr_lang", lang);
+  document.documentElement.setAttribute("lang", lang);
+  document.documentElement.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+  $$(".lang-switch button").forEach(b => b.classList.toggle("active", b.dataset.lang===lang));
+  if (lang === "ar") {
+    $$("[data-i18n]").forEach(el => {
+      const k = el.getAttribute("data-i18n");
+      const t = I18N.ar[k]; if (t) { if (!el.dataset.origText) el.dataset.origText = el.textContent; el.textContent = t; }
+    });
+  } else {
+    $$("[data-i18n]").forEach(el => {
+      if (el.dataset.origText) { el.textContent = el.dataset.origText; }
+    });
+  }
+}
+
+/* ── 3. AI assistant ──────────────────────────────────── */
+function initAI() {
+  const fab = $("#ai-fab"), panel = $("#ai-panel"), body = $("#ai-body");
+  fab.addEventListener("click", () => panel.classList.toggle("open"));
+  $("#ai-close-btn").addEventListener("click", () => panel.classList.remove("open"));
+
+  fetch("/api/ai/status").then(r=>r.json()).then(s => {
+    $("#ai-status").textContent = s.anthropic ? "claude · live" : "heuristic";
+  }).catch(()=>{});
+
+  $("#ai-summary-btn").addEventListener("click", async () => {
+    addAi("Summarizing your last call…");
+    try {
+      const calls = await fetch("/api/calls?limit=1").then(r=>r.json());
+      if (!calls.length) { addAi("No calls yet."); return; }
+      const c = calls[0];
+      const r = await fetch("/api/ai/summarize", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ call_id: c.id, contact: c.contact_name || "", duration: c.duration }),
+      }).then(r=>r.json());
+      addAi(r.summary);
+    } catch (e) { addAi("Error: "+e.message); }
+  });
+
+  $("#ai-coach-btn").addEventListener("click", async () => {
+    const t = $("#transcript-box")?.textContent || "";
+    addAi("Coaching based on the live transcript…");
+    try {
+      const r = await fetch("/api/ai/coach", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ transcript: t, contact: $("#cp-name")?.textContent || "" }),
+      }).then(r=>r.json());
+      addAi(r.tips);
+    } catch (e) { addAi("Error: "+e.message); }
+  });
+
+  function addAi(txt, cls="") {
+    const div = document.createElement("div");
+    div.className = "ai-msg " + cls; div.textContent = txt;
+    body.appendChild(div); body.scrollTop = body.scrollHeight;
+  }
+}
+
+/* ── 4. Voice commands ────────────────────────────────── */
+function initVoiceCommands() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = $("#voice-cmd-btn"), ind = $("#voice-indicator"), txt = $("#voice-text");
+  if (!SR) { btn.style.opacity = .3; btn.title = "Voice not supported in this browser"; return; }
+  let on = false, rec = null;
+  btn.addEventListener("click", () => {
+    on = !on;
+    btn.classList.toggle("on", on);
+    if (on) start(); else stop();
+  });
+  function start() {
+    rec = new SR(); rec.continuous = true; rec.interimResults = true;
+    rec.lang = (localStorage.getItem("dialr_lang") === "ar") ? "ar-EG" : "en-US";
+    rec.onresult = e => {
+      let interim = "", final = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) final += r[0].transcript; else interim += r[0].transcript;
+      }
+      txt.textContent = (final || interim).slice(-40).toUpperCase() || "LISTENING…";
+      if (final) handleVoice(final.toLowerCase().trim());
+    };
+    rec.onerror = () => {};
+    rec.onend = () => { if (on) try { rec.start(); } catch(e){} };
+    try { rec.start(); ind.classList.add("show"); } catch(e){}
+  }
+  function stop() { if (rec) rec.stop(); ind.classList.remove("show"); }
+  function handleVoice(s) {
+    // commands prefix-free, accept "dialr <cmd>" or just "<cmd>"
+    const t = s.replace(/dialr|دايلر/g, "").trim();
+    let m;
+    if ((m = t.match(/(?:call|اتصل بـ?)\s*\+?(\d[\d\s\-]{5,})/))) {
+      const num = "+" + m[1].replace(/\D/g, "");
+      const inp = $("#number-input"); if (inp) { inp.value = num; inp.dispatchEvent(new Event("input")); }
+      window.DIALR.toast(`Voice → dialing ${num}`); $("#call-btn")?.click();
+    }
+    else if (t.match(/^(open|go to|اذهب|افتح)\s+(dialer|الاتصال)/)) window.DIALR.navigate("dialer");
+    else if (t.match(/(contacts|جهات)/)) window.DIALR.navigate("contacts");
+    else if (t.match(/(history|سجل)/)) window.DIALR.navigate("history");
+    else if (t.match(/(network|شبكة)/)) window.DIALR.navigate("network");
+    else if (t.match(/(world|map|عالم|خريطة)/)) window.DIALR.navigate("world");
+    else if (t.match(/(analytics|تحليل)/)) window.DIALR.navigate("analytics");
+    else if (t.match(/(hang up|end call|اقفل)/)) $(".end-call")?.click();
+  }
+}
+
+/* ── 5. WebRTC P2P (DIALR Network — free unlimited calls) ── */
+const P2P = {
+  pc: null, localStream: null, remoteSid: null, myHandle: null,
+  ICE: { iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ]},
+};
+function initP2P() {
+  const sock = window.DIALR.socket;
+  if (!sock) return;
+
+  // generate / load handle
+  P2P.myHandle = localStorage.getItem("dialr_handle") ||
+    ("DIALR-" + Math.random().toString(36).substr(2, 6).toUpperCase());
+  localStorage.setItem("dialr_handle", P2P.myHandle);
+  const handleEl = $("#my-dialr-handle"); if (handleEl) handleEl.textContent = P2P.myHandle;
+
+  sock.on("connected", () => {
+    sock.emit("p2p_register", { handle: P2P.myHandle });
+  });
+  sock.emit("p2p_register", { handle: P2P.myHandle });
+
+  sock.on("network_users", users => renderNetworkUsers(users));
+  sock.on("p2p_offer", async data => incomingCall(data));
+  sock.on("p2p_answer", async data => {
+    if (P2P.pc && data.sdp) await P2P.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+  });
+  sock.on("p2p_ice", async data => {
+    if (P2P.pc && data.candidate) try { await P2P.pc.addIceCandidate(data.candidate); } catch(e){}
+  });
+  sock.on("p2p_hangup", () => endP2PCall(true));
+  sock.on("p2p_reject", () => { window.DIALR.toast("Call rejected"); endP2PCall(true); });
+
+  // refresh on page load + button
+  $("#p2p-refresh-btn")?.addEventListener("click", () => {
+    fetch("/api/network/users").then(r=>r.json()).then(renderNetworkUsers);
+  });
+  $("#p2p-call-btn")?.addEventListener("click", () => {
+    const id = $("#p2p-target-id").value.trim(); if (id) callPeerByHandle(id, "audio");
+  });
+  $("#p2p-video-btn")?.addEventListener("click", () => {
+    const id = $("#p2p-target-id").value.trim(); if (id) callPeerByHandle(id, "video");
+  });
+
+  $("#incoming-accept").addEventListener("click", acceptIncoming);
+  $("#incoming-reject").addEventListener("click", rejectIncoming);
+}
+
+let __pendingIncoming = null;
+function incomingCall(data) {
+  __pendingIncoming = data;
+  $("#incoming-from").textContent = data.from_handle || data.from.slice(0, 8);
+  $("#incoming-type").textContent = (data.call_type === "video" ? "Video" : "Audio") + " call · 100% free";
+  $("#incoming-modal").classList.add("show");
+  // play a soft beep
+  try {
+    const ac = new (window.AudioContext||window.webkitAudioContext)();
+    const o = ac.createOscillator(); o.frequency.value = 880;
+    const g = ac.createGain(); g.gain.value = 0.05;
+    o.connect(g); g.connect(ac.destination); o.start(); setTimeout(()=>o.stop(), 200);
+  } catch(e){}
+}
+async function acceptIncoming() {
+  const data = __pendingIncoming; __pendingIncoming = null;
+  $("#incoming-modal").classList.remove("show");
+  if (!data) return;
+  P2P.remoteSid = data.from;
+  await ensureMedia(data.call_type === "video");
+  P2P.pc = newPeer();
+  P2P.localStream.getTracks().forEach(t => P2P.pc.addTrack(t, P2P.localStream));
+  await P2P.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+  const answer = await P2P.pc.createAnswer();
+  await P2P.pc.setLocalDescription(answer);
+  window.DIALR.socket.emit("p2p_answer", { to: data.from, sdp: answer });
+  window.DIALR.toast("Connected — free call live ✨");
+}
+function rejectIncoming() {
+  if (__pendingIncoming) window.DIALR.socket.emit("p2p_reject", { to: __pendingIncoming.from });
+  __pendingIncoming = null; $("#incoming-modal").classList.remove("show");
+}
+async function callPeerByHandle(handleOrSid, type="audio") {
+  const sock = window.DIALR.socket;
+  let users = []; try { users = await fetch("/api/network/users").then(r=>r.json()); } catch(e){}
+  const target = users.find(u => u.handle.toUpperCase() === handleOrSid.toUpperCase()) ||
+                 users.find(u => u.sid === handleOrSid);
+  if (!target) { window.DIALR.toast("DIALR ID not online"); return; }
+  P2P.remoteSid = target.sid;
+  await ensureMedia(type === "video");
+  P2P.pc = newPeer();
+  P2P.localStream.getTracks().forEach(t => P2P.pc.addTrack(t, P2P.localStream));
+  const offer = await P2P.pc.createOffer();
+  await P2P.pc.setLocalDescription(offer);
+  sock.emit("p2p_offer", { to: target.sid, from_handle: P2P.myHandle, sdp: offer, call_type: type });
+  window.DIALR.toast(`Calling ${target.handle}…`);
+}
+function newPeer() {
+  const pc = new RTCPeerConnection(P2P.ICE);
+  pc.ontrack = e => {
+    const a = $("#remote-audio");
+    if (a && a.srcObject !== e.streams[0]) a.srcObject = e.streams[0];
+  };
+  pc.onicecandidate = e => {
+    if (e.candidate && P2P.remoteSid) {
+      window.DIALR.socket.emit("p2p_ice", { to: P2P.remoteSid, candidate: e.candidate });
+    }
+  };
+  pc.onconnectionstatechange = () => {
+    if (["disconnected","failed","closed"].includes(pc.connectionState)) endP2PCall(true);
+  };
+  return pc;
+}
+async function ensureMedia(video=false) {
+  try {
+    P2P.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video });
+  } catch (e) {
+    window.DIALR.toast("Mic permission needed");
+    throw e;
+  }
+}
+function endP2PCall(silent=false) {
+  if (P2P.pc) { try { P2P.pc.close(); } catch(e){} P2P.pc = null; }
+  if (P2P.localStream) { P2P.localStream.getTracks().forEach(t=>t.stop()); P2P.localStream = null; }
+  if (P2P.remoteSid && !silent) window.DIALR.socket.emit("p2p_hangup", { to: P2P.remoteSid });
+  P2P.remoteSid = null;
+  const a = $("#remote-audio"); if (a) a.srcObject = null;
+}
+function renderNetworkUsers(users) {
+  const grid = $("#network-grid"); if (!grid) return;
+  const others = (users || []).filter(u => u.handle !== P2P.myHandle);
+  $("#nav-count-network").textContent = others.length;
+  $("#p2p-online-count").textContent = others.length;
+  if (!others.length) {
+    grid.innerHTML = '<div class="text-muted text-sm">No one else online yet. Open DIALR PRO in another browser tab to test — it\'s a real P2P call.</div>';
+    return;
+  }
+  grid.innerHTML = others.map(u => {
+    const initials = (u.handle || "??").slice(-2).toUpperCase();
+    const status = u.in_call ? "busy" : "online";
+    return `<div class="peer-card">
+      <div class="peer-avatar">${initials}</div>
+      <div class="peer-handle">${u.handle}</div>
+      <div class="peer-meta">${u.country || "WORLDWIDE"}</div>
+      <div class="peer-status ${status}">● ${status.toUpperCase()}</div>
+      <div class="row gap-sm" style="margin-top:10px">
+        <button class="btn primary" data-call="${u.sid}">📞</button>
+        <button class="btn" data-vid="${u.sid}">📹</button>
+      </div>
+    </div>`;
+  }).join("");
+  grid.querySelectorAll("[data-call]").forEach(b => b.addEventListener("click", () => callPeerByHandle(b.dataset.call, "audio")));
+  grid.querySelectorAll("[data-vid]").forEach(b => b.addEventListener("click", () => callPeerByHandle(b.dataset.vid, "video")));
+}
+
+/* ── 6. World Globe (Three.js) ────────────────────────── */
+function initWorldGlobe() {
+  // Pre-fetch country geo for the continents layer
+  fetch("/api/geo/countries").then(r=>r.json()).then(d => { window.__DIALR_COUNTRIES = d; });
+}
+async function showGlobePage() {
+  const container = $("#globe-container"); if (!container || !window.DialrGlobe) return;
+  if (!window.__DIALR_COUNTRIES) {
+    window.__DIALR_COUNTRIES = await fetch("/api/geo/countries").then(r=>r.json()).catch(()=>({}));
+  }
+  window.DialrGlobe.init(container);
+  try {
+    const calls = await fetch("/api/geo/calls").then(r=>r.json());
+    window.DialrGlobe.loadFromCallsData(calls);
+    $("#globe-count").textContent = calls.length;
+    const totalCost = calls.reduce((s,c)=>s+(c.cost||0), 0);
+    $("#globe-cost").textContent = `$${totalCost.toFixed(2)} spent worldwide`;
+  } catch(e){}
+}
+
+/* ── 7. Mic waveform visualizer (during active call) ──── */
+const Wave = { ac: null, analyser: null, raf: null, stream: null };
+async function startWaveform() {
+  const c = $("#waveform-canvas"); if (!c) return;
+  c.width = c.clientWidth; c.height = 60;
+  const ctx = c.getContext("2d");
+  try {
+    Wave.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch(e) { return; }
+  Wave.ac = new (window.AudioContext||window.webkitAudioContext)();
+  const src = Wave.ac.createMediaStreamSource(Wave.stream);
+  Wave.analyser = Wave.ac.createAnalyser(); Wave.analyser.fftSize = 256;
+  src.connect(Wave.analyser);
+  const bufLen = Wave.analyser.frequencyBinCount;
+  const data = new Uint8Array(bufLen);
+  function draw() {
+    Wave.raf = requestAnimationFrame(draw);
+    Wave.analyser.getByteFrequencyData(data);
+    ctx.clearRect(0,0,c.width,c.height);
+    const bw = c.width / bufLen;
+    for (let i=0;i<bufLen;i++) {
+      const h = (data[i] / 255) * c.height * 0.9;
+      const grd = ctx.createLinearGradient(0, c.height-h, 0, c.height);
+      grd.addColorStop(0, "#00e5b0"); grd.addColorStop(1, "#00b894");
+      ctx.fillStyle = grd;
+      ctx.fillRect(i*bw, c.height-h, bw*0.7, h);
+    }
+  }
+  draw();
+}
+function stopWaveform() {
+  if (Wave.raf) cancelAnimationFrame(Wave.raf);
+  if (Wave.stream) Wave.stream.getTracks().forEach(t=>t.stop());
+  if (Wave.ac) Wave.ac.close();
+  Wave.raf = null; Wave.stream = null; Wave.ac = null; Wave.analyser = null;
+}
+function initWaveform() {
+  // Watch the call panel show/hide
+  const panel = $("#call-panel");
+  if (!panel) return;
+  const obs = new MutationObserver(() => {
+    if (!panel.classList.contains("hidden") && !Wave.raf) startWaveform();
+    else if (panel.classList.contains("hidden") && Wave.raf) stopWaveform();
+  });
+  obs.observe(panel, { attributes: true, attributeFilter: ["class"] });
+}
+
+/* ── 8. Cost Optimizer panel (auto-refresh on lookup) ─── */
+function initCostOptimizer() {
+  const inp = $("#number-input"), panel = $("#route-panel"), opts = $("#route-options");
+  if (!inp || !panel) return;
+  let timer = null;
+  inp.addEventListener("input", () => {
+    clearTimeout(timer);
+    const v = inp.value.trim();
+    if (v.length < 4) { panel.classList.add("hidden"); return; }
+    timer = setTimeout(async () => {
+      try {
+        const lookup = await fetch("/api/lookup?phone=" + encodeURIComponent(v)).then(r=>r.json());
+        if (!lookup.country_code) { panel.classList.add("hidden"); return; }
+        const r = await fetch("/api/cost/route?country_code=" + lookup.country_code).then(r=>r.json());
+        if (!r.options || !r.options.length) { panel.classList.add("hidden"); return; }
+        panel.classList.remove("hidden");
+        opts.innerHTML = r.options.map((o, i) => `
+          <div class="route-option ${i===0?"best":""}">
+            <span class="name">${o.name}${i===0?'<span class="badge-best">CHEAPEST</span>':''}</span>
+            <span class="cost">$${o.cost_per_min}/min</span>
+          </div>`).join("");
+      } catch(e) { panel.classList.add("hidden"); }
+    }, 250);
+  });
+}
+
+/* ── 9. Hook into routing for World page ──────────────── */
+function patchRouting() {
+  window.DIALR.onPageChange = (page) => {
+    if (page === "world") {
+      // Three.js needs container size; defer one frame
+      setTimeout(showGlobePage, 80);
+    } else if (page === "network") {
+      fetch("/api/network/users").then(r=>r.json()).then(renderNetworkUsers).catch(()=>{});
+    }
+  };
+}
 })();
