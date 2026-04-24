@@ -1,42 +1,71 @@
 # DIALR PRO
 
-A Flask + WebRTC dialer web app that integrates with Twilio (or Voip.ms) for low-cost outbound calling. The browser uses Twilio's JavaScript SDK to place calls; the Flask backend issues access tokens, handles TwiML voice webhooks, tracks call status, and exposes simple REST/WebSocket APIs.
+A professional world dialer / mini-CRM web app built with Flask + SQLite + Socket.IO.
+
+## What it does
+
+- **Dialer** — international keypad with live cost lookup (per-country pricing).
+- **Power Dialer** — auto-dial through any contact list, with progress, dispositions, skip & stop.
+- **Contacts** — full CRUD, CSV import / export, tags, company, country auto-detect.
+- **Lists** — group contacts into colored campaigns.
+- **History** — every call recorded; per-call notes, transcript, disposition.
+- **Live Transcription** — uses the browser Web Speech API on the active call.
+- **SMS** — two-way messaging with threaded conversations.
+- **Scheduled Callbacks** — pick a date/time, gets flagged when due.
+- **Scripts** — categorized talk-tracks shown in the live call panel.
+- **Voicemail Drop** — record audio in the browser & save for re-use.
+- **Analytics** — calls/cost charts (Chart.js), top contacts, disposition mix.
+- **Do Not Call** — block numbers from being dialed.
+- **Settings** — pick provider, manage agent identity, edit dispositions.
+
+## Providers
+
+The backend has an abstraction over three providers (`providers.py`):
+
+| Provider | Use it for | Required env |
+|----------|------------|--------------|
+| **Demo** | Works out of the box, fakes calls/SMS — perfect for testing the UI. | none |
+| **Twilio** | Production-grade global calls + SMS, plus browser WebRTC voice. | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` (optionally `TWILIO_API_KEY`, `TWILIO_API_SECRET`, `TWILIO_TWIML_APP_SID` for browser dialing) |
+| **Voip.ms** | Cheapest international rates. | `VOIPMS_USERNAME`, `VOIPMS_PASSWORD`, `VOIPMS_DID` |
+
+Active provider is chosen in **Settings → Provider** (auto / twilio / voipms / demo).
 
 ## Stack
 
-- **Backend:** Python 3.12, Flask, Flask-SocketIO
-- **Telephony:** Twilio (Voice + WebRTC)
-- **Realtime:** Socket.IO over WebSockets (`simple-websocket`)
-- **Frontend:** Single-page `templates/index.html` (Twilio JS SDK + Socket.IO client via CDN)
-- **Persistence:** In-memory `call_log` and `stats`; contacts stored in `contacts.json`
+- **Backend:** Python 3, Flask, Flask-SocketIO (threading mode + simple-websocket), SQLite (`dialr.db`).
+- **Phone parsing:** `phonenumbers` (Google libphonenumber port) for E.164, country, type & cost estimation.
+- **Frontend:** vanilla JS (no framework), Chart.js, Socket.IO. Single-page with hash-less navigation.
+- **Realtime:** Socket.IO over polling (websocket transport disabled to avoid a werkzeug dev-server bug on upgrade).
+- **Auth:** none — single-user app meant to run for one operator.
 
-## Project Layout
+## Project Structure
 
 ```
-app.py                # Flask app + routes + Socket.IO events
-templates/index.html  # UI (rendered by Flask via Jinja)
-env.example           # Sample env vars (Twilio credentials)
-pyproject.toml        # uv-managed Python deps
+app.py              # Flask routes (REST + Socket.IO)
+db.py               # SQLite schema + helpers + seed data
+providers.py        # Twilio / Voip.ms / Demo abstraction
+templates/
+  index.html        # Single-page UI shell
+static/
+  styles.css        # Dark CRM theme
+  app.js            # All client-side logic
+uploads/            # User-uploaded voicemails
+dialr.db            # SQLite database (auto-created)
+env.example         # Reference for env vars
 ```
 
-## Running Locally
+## Run
 
-The workflow `Start application` runs `python app.py` on `0.0.0.0:5000` (webview).
+```
+python app.py
+```
 
-## Environment Variables
+The Replit workflow `Start application` does this automatically and exposes port 5000.
 
-Optional — the app starts without them but Twilio features will be disabled until they are set. See `env.example`:
+## Deploy
 
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
-- `TWILIO_API_KEY`, `TWILIO_API_SECRET`, `TWILIO_TWIML_APP_SID`
-- `SECRET_KEY`
+Configured for **VM** deployment (keeps Socket.IO connections + in-memory call state alive between requests).
 
-## Deployment
+## Keyboard Shortcuts
 
-Configured for **VM** deployment (`python app.py`) because the app keeps in-memory call/stat state and uses long-lived WebSocket connections.
-
-## Replit Setup Notes
-
-- Moved `index.html` into `templates/` so Flask's default loader can find it.
-- Bound to `0.0.0.0:5000` for the Replit webview proxy.
-- `flask-socketio` requires `simple-websocket` for the WebSocket transport — installed alongside the other deps.
+`Alt+1..9` switch tabs · `0-9` dial keys · `Enter` place call · `Esc` close modal.
