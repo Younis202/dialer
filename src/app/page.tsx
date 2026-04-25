@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { motion } from "framer-motion";
@@ -29,6 +29,14 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 type Mode = "idle" | "telephony" | "p2p";
 
 export default function DialerPage() {
+  return (
+    <Suspense>
+      <DialerInner />
+    </Suspense>
+  );
+}
+
+function DialerInner() {
   const search = useSearchParams();
   const router = useRouter();
   const [raw, setRaw] = useState("");

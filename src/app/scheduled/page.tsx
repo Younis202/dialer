@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { CalendarClock, Plus, Trash2, Phone, Bell } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -28,7 +28,10 @@ export default function ScheduledPage() {
   const [open, setOpen] = useState(false);
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
-  const [when, setWhen] = useState(localIsoMin(new Date(Date.now() + 60 * 60 * 1000)));
+  const [when, setWhen] = useState("");
+  useEffect(() => {
+    setWhen(localIsoMin(new Date(Date.now() + 60 * 60 * 1000)));
+  }, []);
   const [notes, setNotes] = useState("");
 
   async function create() {

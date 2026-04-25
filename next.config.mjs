@@ -4,6 +4,9 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
   },
+  allowedDevOrigins: process.env.REPLIT_DEV_DOMAIN
+    ? [process.env.REPLIT_DEV_DOMAIN]
+    : [],
   serverExternalPackages: ["jssip"],
   webpack: (config) => {
     config.externals = config.externals || [];
