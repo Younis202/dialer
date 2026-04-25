@@ -1,6 +1,5 @@
 "use client";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { motion } from "framer-motion";
 import {
@@ -29,16 +28,10 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 type Mode = "idle" | "telephony" | "p2p";
 
 export default function DialerPage() {
-  return (
-    <Suspense>
-      <DialerInner />
-    </Suspense>
-  );
+  return <DialerInner />;
 }
 
 function DialerInner() {
-  const search = useSearchParams();
-  const router = useRouter();
   const [raw, setRaw] = useState("");
   const [callOpen, setCallOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("idle");
@@ -64,14 +57,14 @@ function DialerInner() {
     refreshInterval: 8000,
   });
 
-  // Pre-fill from `?dial=` query param
+  // Pre-fill from `?dial=` query param (client-only, no useSearchParams needed)
   useEffect(() => {
-    const d = search.get("dial");
+    const d = new URLSearchParams(window.location.search).get("dial");
     if (d) {
       setRaw(d);
-      router.replace("/", { scroll: false });
+      window.history.replaceState({}, "", "/");
     }
-  }, [search, router]);
+  }, []);
 
   // SIP state -> UI state
   useEffect(() => {
