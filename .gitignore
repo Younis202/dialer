@@ -1,19 +1,14 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.pythonlibs/
-.venv/
-venv/
-env/
-*.egg-info/
-.pytest_cache/
-
-# Environment
+node_modules/
+.next/
+out/
+build/
+dist/
+*.log
+.DS_Store
 .env
-contacts.json
-
-# Replit
-.cache/
+.env.local
+.env.*.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+drizzle/

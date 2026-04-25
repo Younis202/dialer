@@ -1,0 +1,217 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+    --font-display: "Inter Display", "Inter", system-ui, sans-serif;
+
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 8% 6%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 4.5%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 158 95% 48%;
+    --primary-foreground: 240 10% 3.9%;
+    --secondary: 240 6% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 6% 10%;
+    --muted-foreground: 240 5% 60%;
+    --accent: 240 6% 14%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 78% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 6% 14%;
+    --input: 240 6% 14%;
+    --ring: 158 95% 48%;
+    --success: 158 95% 48%;
+    --warning: 38 92% 56%;
+    --info: 217 91% 60%;
+    --radius: 0.875rem;
+
+    --grad-aurora: radial-gradient(at 20% 0%, hsl(158 95% 48% / 0.18) 0px, transparent 50%),
+      radial-gradient(at 80% 0%, hsl(217 91% 60% / 0.12) 0px, transparent 50%),
+      radial-gradient(at 0% 50%, hsl(280 80% 60% / 0.08) 0px, transparent 50%),
+      radial-gradient(at 80% 80%, hsl(158 95% 48% / 0.06) 0px, transparent 50%);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "cv11", "ss01", "ss03";
+    background-image: var(--grad-aurora);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.3);
+    color: hsl(var(--primary-foreground));
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 8px;
+    border: 2px solid hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.4);
+  }
+
+  input,
+  textarea,
+  select {
+    font-feature-settings: "tnum" 1;
+  }
+}
+
+@layer components {
+  .glass {
+    background: linear-gradient(
+      to bottom right,
+      hsl(var(--card) / 0.7),
+      hsl(var(--card) / 0.4)
+    );
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid hsl(var(--border) / 0.8);
+  }
+
+  .glass-strong {
+    background: hsl(var(--card) / 0.85);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border: 1px solid hsl(var(--border));
+  }
+
+  .text-gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--info)) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .keypad-key {
+    @apply relative flex flex-col items-center justify-center
+           rounded-2xl bg-card/40 border border-border/40
+           text-3xl font-display font-medium tracking-tight
+           transition-all duration-150 ease-out
+           hover:bg-card/80 hover:border-border active:scale-[0.97]
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60
+           select-none cursor-pointer overflow-hidden;
+    height: 64px;
+  }
+
+  .keypad-key::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, hsl(var(--primary) / 0.18) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .keypad-key:active::before {
+    opacity: 1;
+  }
+
+  .keypad-letters {
+    @apply text-[10px] font-mono uppercase tracking-[0.2em] text-muted-foreground/60 mt-0.5;
+  }
+
+  .grid-pattern {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.4) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.4) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+  }
+
+  .noise {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.025;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' /%3E%3C/svg%3E");
+  }
+
+  .ring-pulse {
+    position: relative;
+  }
+
+  .ring-pulse::before,
+  .ring-pulse::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px solid hsl(var(--primary) / 0.5);
+    animation: pulse-ring 1.6s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  }
+
+  .ring-pulse::after {
+    animation-delay: 0.5s;
+  }
+
+  .data-card {
+    @apply rounded-2xl border border-border/60 bg-card/40 backdrop-blur-xl p-5
+           transition-all duration-200 hover:border-border hover:bg-card/60;
+  }
+
+  .stat-num {
+    @apply font-display text-2xl font-semibold tabular-nums tracking-tight;
+  }
+
+  .stat-label {
+    @apply text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground;
+  }
+
+  .nav-link {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium
+           text-muted-foreground hover:text-foreground hover:bg-accent/60
+           transition-colors duration-150 cursor-pointer;
+  }
+
+  .nav-link.active {
+    @apply text-foreground bg-accent;
+  }
+
+  .nav-link.active svg {
+    @apply text-primary;
+  }
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("https://rsms.me/inter/font-files/InterVariable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono/fonts/webfonts/JetBrainsMono-Regular.woff2") format("woff2");
+}
