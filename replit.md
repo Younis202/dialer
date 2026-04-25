@@ -57,3 +57,4 @@ User credentials live in `/settings` (stored as JSON in `settings` table). See `
 ## Recent changes
 
 - 2026-04-25: Initial rebuild from Flask/vanilla-JS to Next.js stack. All 14 pages, 11 API route groups, full design system, P2P + SIP wrappers shipped.
+- 2026-04-25: Migrated from Replit Agent to Replit. Provisioned Replit Postgres, pushed Drizzle schema, removed leftover Flask scaffolding (`main.py`, `pyproject.toml`, `uv.lock`, `dialr.db`), confirmed Next.js + custom WS server boots cleanly on port 5000.
