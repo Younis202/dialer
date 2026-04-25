@@ -58,6 +58,7 @@ app.prepare().then(() => {
   });
 
   const wss = new WebSocketServer({ noServer: true });
+  const nextUpgradeHandler = app.getUpgradeHandler();
 
   server.on("upgrade", (req, socket, head) => {
     const { pathname } = parse(req.url || "");
@@ -66,7 +67,7 @@ app.prepare().then(() => {
         wss.emit("connection", ws, req);
       });
     } else {
-      socket.destroy();
+      nextUpgradeHandler(req, socket, head);
     }
   });
 

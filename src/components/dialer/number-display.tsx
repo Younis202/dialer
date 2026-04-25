@@ -53,6 +53,7 @@ export function NumberDisplay({
           value={raw}
           onChange={(e) => onChange(e.target.value)}
           placeholder="+1 555 123 4567"
+          suppressHydrationWarning
           className={cn(
             "w-full bg-transparent border-0 outline-none",
             "font-display font-medium tabular-nums",
