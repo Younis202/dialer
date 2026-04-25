@@ -1,5 +1,4 @@
 "use client";
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 const KEYS: Array<{ digit: string; letters?: string }> = [
@@ -62,12 +61,11 @@ export function Keypad({ onPress, disabled }: { onPress: (d: string) => void; di
   return (
     <div className="grid grid-cols-3 gap-2.5 max-w-[340px] mx-auto w-full">
       {KEYS.map((k) => (
-        <motion.button
+        <button
           key={k.digit}
-          whileTap={{ scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 400, damping: 25 }}
+          type="button"
           className={cn(
-            "keypad-key",
+            "keypad-key transition-transform active:scale-95",
             disabled && "opacity-40 pointer-events-none"
           )}
           onClick={() => handle(k.digit)}
@@ -75,7 +73,7 @@ export function Keypad({ onPress, disabled }: { onPress: (d: string) => void; di
         >
           <span className="leading-none">{k.digit}</span>
           {k.letters && <span className="keypad-letters">{k.letters}</span>}
-        </motion.button>
+        </button>
       ))}
     </div>
   );

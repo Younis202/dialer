@@ -14,6 +14,13 @@ DIALR enables international calls via Voip.ms SIP integration, P2P encrypted vid
 - **Telephony**: JsSIP (SIP/Voip.ms), WebRTC (P2P calls)
 - **UI**: Tailwind CSS, Framer Motion, Lucide React, Shadcn UI components
 
+## Replit Environment Notes
+
+- Dev server runs on port `5000` via the `Start application` workflow (`npm run dev`).
+- Postgres is provisioned via Replit; `DATABASE_URL` is set automatically. Schema sync: `npm run db:push -- --force`.
+- npm install must be run with `--legacy-peer-deps` because `react-simple-maps` declares an older React peer than React 19.
+- Hydration: a few initial-render motion components were swapped for plain elements with Tailwind transitions to avoid SSR/client class mismatches with React 19 + framer-motion (keypad keys, the Call button + pulse ring, and the country chip in the number display). The `pulse-ring` keyframes already live in `src/app/globals.css`.
+
 ## Project Structure
 
 - `server.ts` — Entry point; starts Next.js + WebSocket signaling server

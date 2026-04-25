@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
-import { motion } from "framer-motion";
 import {
   Phone, Plus, MessageSquare, ArrowUpRight, Wifi, Copy, Check, Send,
 } from "lucide-react";
@@ -276,23 +275,21 @@ function DialerInner() {
                 <Plus className="h-5 w-5" />
               </Button>
 
-              <motion.button
-                whileHover={{ scale: parsed.isValid ? 1.04 : 1 }}
-                whileTap={{ scale: 0.96 }}
+              <button
+                type="button"
                 disabled={!parsed.isValid}
                 onClick={startCall}
-                className="relative h-16 w-16 rounded-full bg-gradient-to-br from-primary to-success flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed shadow-[0_8px_32px_-8px_hsl(var(--primary)/0.6)]"
+                className="relative h-16 w-16 rounded-full bg-gradient-to-br from-primary to-success flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed shadow-[0_8px_32px_-8px_hsl(var(--primary)/0.6)] transition-transform hover:enabled:scale-[1.04] active:enabled:scale-95"
                 aria-label="Call"
               >
                 {parsed.isValid && (
-                  <motion.span
-                    className="absolute inset-0 rounded-full border-2 border-primary/50"
-                    animate={{ scale: [1, 1.4], opacity: [0.6, 0] }}
-                    transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut" }}
+                  <span
+                    className="absolute inset-0 rounded-full border-2 border-primary/50 pulse-ring pointer-events-none"
+                    aria-hidden
                   />
                 )}
                 <Phone className="h-7 w-7 text-primary-foreground" strokeWidth={2.2} />
-              </motion.button>
+              </button>
 
               <Button
                 size="icon"

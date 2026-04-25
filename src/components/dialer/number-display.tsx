@@ -1,6 +1,5 @@
 "use client";
 import { Delete } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 import type { ParsedPhone } from "@/lib/phone";
 import { Flag } from "@/components/ui/flag";
 import { cn } from "@/lib/utils";
@@ -20,27 +19,22 @@ export function NumberDisplay({
     <div className="relative">
       <div className="flex items-center justify-between gap-2 mb-2 px-1 min-h-[20px]">
         <div className="flex items-center gap-2">
-          <AnimatePresence mode="wait">
-            {parsed.country && (
-              <motion.div
-                key={parsed.country}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 8 }}
-                className="flex items-center gap-1.5"
-              >
-                <Flag country={parsed.country} size="sm" />
-                <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
-                  {parsed.countryName}
+          {parsed.country && (
+            <div
+              key={parsed.country}
+              className="flex items-center gap-1.5 animate-in fade-in slide-in-from-left-2 duration-200"
+            >
+              <Flag country={parsed.country} size="sm" />
+              <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
+                {parsed.countryName}
+              </span>
+              {parsed.type !== "unknown" && (
+                <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground/60">
+                  · {parsed.type}
                 </span>
-                {parsed.type !== "unknown" && (
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground/60">
-                    · {parsed.type}
-                  </span>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+              )}
+            </div>
+          )}
         </div>
         <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
           {parsed.isValid ? <span className="text-success">Valid</span> : <span>Destination</span>}
