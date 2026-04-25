@@ -53,13 +53,12 @@ export function NumberDisplay({
           value={raw}
           onChange={(e) => onChange(e.target.value)}
           placeholder="+1 555 123 4567"
-          suppressHydrationWarning
           className={cn(
             "w-full bg-transparent border-0 outline-none",
             "font-display font-medium tabular-nums",
             "text-3xl md:text-4xl tracking-tight text-center",
             "py-3 placeholder:text-muted-foreground/30",
-            "transition-colors caret-primary"
+            "transition-colors"
           )}
         />
         {raw && (

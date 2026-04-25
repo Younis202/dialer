@@ -71,6 +71,10 @@
     font-feature-settings: "tnum" 1;
   }
 
+  input[type="tel"] {
+    caret-color: hsl(var(--primary));
+  }
+
   /* Faster reduced-motion when requested */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
