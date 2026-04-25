@@ -1,60 +1,56 @@
-# DIALR — World Dialer & CRM
+# DIALR - World Dialer & CRM
 
-A premium 2026 web dialer + CRM built on Next.js 15, custom Node WebSocket server, Postgres, Drizzle, JsSIP (Voip.ms), and WebRTC P2P.
+A modern web-based telephony application and CRM system for global calling via SIP and P2P communication.
 
-## Stack
+## Overview
 
-- **Framework**: Next.js 15 (App Router) + React 19 + TypeScript
-- **Server**: Custom `server.ts` (tsx) — Next.js + WebSocket signaling on port 5000
-- **DB**: Replit Postgres + Drizzle ORM (`drizzle-kit push`)
-- **Telephony**:
-  - `JsSIP` browser-side SIP for Voip.ms (cheapest worldwide rates from a US number)
-  - WebRTC P2P (free DIALR-to-DIALR calls) over our own `/ws` signaling
-- **UI**: Tailwind v3, hand-rolled shadcn-style primitives, Framer Motion, Lucide, Recharts, sonner, cmdk
-- **Phone**: `libphonenumber-js`
+DIALR enables international calls via Voip.ms SIP integration, P2P encrypted video/audio calls between DIALR users, SMS management, contact CRM, power dialer, and call analytics.
 
-## Layout
+## Tech Stack
 
+- **Framework**: Next.js 15 (App Router) with React 19
+- **Server**: Custom `server.ts` using `tsx` — runs Next.js + WebSocket signaling server on port 5000
+- **Database**: PostgreSQL (Replit Postgres) with Drizzle ORM
+- **Telephony**: JsSIP (SIP/Voip.ms), WebRTC (P2P calls)
+- **UI**: Tailwind CSS, Framer Motion, Lucide React, Shadcn UI components
+
+## Project Structure
+
+- `server.ts` — Entry point; starts Next.js + WebSocket signaling server
+- `src/app/` — Next.js App Router pages and API routes
+  - `api/` — Backend API routes (calls, contacts, messages, stats, settings)
+  - `analytics/`, `contacts/`, `history/`, `lists/`, `messages/`, `network/`, `power/`, `settings/` — Feature pages
+  - `page.tsx` — Main Dialer interface
+- `src/components/` — UI components
+  - `dialer/` — Keypad, active call UI, cost optimizer
+  - `shell/` — Layout (sidebar, header), context providers (SIP/P2P)
+  - `ui/` — Radix-based primitives
+- `src/lib/` — Core utilities
+  - `db/` — Database schema (schema.ts) and client
+  - `p2p/`, `sip/` — WebRTC/JsSIP wrappers
+  - `rates.ts` — International call rate comparison
+- `drizzle.config.ts` — Drizzle ORM configuration
+- `next.config.mjs` — Next.js configuration
+
+## Running the App
+
+```bash
+npm run dev       # Development server (tsx server.ts)
+npm run build     # Build for production
+npm run start     # Production server
+npm run db:push   # Push schema changes to database
 ```
-server.ts                 # custom Next + WebSocket server
-src/
-  app/                    # 14 pages + /api/* routes
-    api/                  # REST CRUD (calls, contacts, lists, messages,
-                          # scheduled, scripts, voicemails, dnc, settings,
-                          # dispositions, stats)
-    page.tsx              # Dialer (centerpiece)
-    power/                # Auto-dialer
-    network/              # P2P presence
-    world/                # Country reach
-    contacts/, lists/, history/, messages/, scheduled/,
-    scripts/, voicemail/, analytics/, dnc/, settings/
-    globals.css           # Full design system
-    layout.tsx
-  components/
-    ui/                   # ~22 primitives
-    shell/                # sidebar, header, command-palette, providers, page-header
-    dialer/               # keypad, number-display, cost-optimizer, active-call
-  lib/
-    db/                   # Drizzle schema + client
-    sip/client.ts         # JsSIP wrapper (Voip.ms)
-    p2p/peer.ts           # WebRTC P2P
-    rates.ts              # multi-provider per-min costs
-    phone.ts, utils.ts
-```
 
-## Workflow
+## Environment Variables
 
-`npm run dev` (configured) → `tsx server.ts` listening on `:5000` (webview).
+- `DATABASE_URL` — PostgreSQL connection string (auto-provided by Replit Postgres)
+- `PORT` — Server port (defaults to 5000)
+
+## SIP / Voip.ms Configuration
+
+Users configure their Voip.ms SIP credentials via the Settings page in the app UI. No hardcoded credentials needed.
 
 ## Deployment
 
-Use **Reserved VM** so the WebSocket server persists. Build: `npm run build`. Start: `npm start`.
-
-## Setup
-
-User credentials live in `/settings` (stored as JSON in `settings` table). See `SETUP_GUIDE.md` for the user-facing onboarding.
-
-## Recent changes
-
-- 2026-04-25: Initial rebuild from Flask/vanilla-JS to Next.js stack. All 14 pages, 11 API route groups, full design system, P2P + SIP wrappers shipped.
-- 2026-04-25: Migrated from Replit Agent to Replit. Provisioned Replit Postgres, pushed Drizzle schema, removed leftover Flask scaffolding (`main.py`, `pyproject.toml`, `uv.lock`, `dialr.db`), confirmed Next.js + custom WS server boots cleanly on port 5000.
+The app runs on port 5000 and is deployed via the "Start application" workflow (`npm run dev`).
+For production deployment, the command is `NODE_ENV=production tsx server.ts`.
