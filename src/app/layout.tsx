@@ -24,15 +24,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://rsms.me" />
-        <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@2.304/css/jetbrains-mono.css"
-        />
-      </head>
-      <body>
+      <body suppressHydrationWarning>
         <AppProviders>
           <div className="flex h-screen w-screen overflow-hidden">
             <Sidebar />
