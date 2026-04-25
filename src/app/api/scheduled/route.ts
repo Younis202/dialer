@@ -4,30 +4,30 @@ import { scheduledCalls } from "@/lib/db/schema";
 import { asc, eq } from "drizzle-orm";
 
 export async function GET() {
-  const rows = await db.select().from(scheduledCalls).orderBy(asc(scheduledCalls.scheduledAt)).limit(200);
+  const rows = await db
+    .select()
+    .from(scheduledCalls)
+    .where(eq(scheduledCalls.status, "pending"))
+    .orderBy(asc(scheduledCalls.scheduledFor));
   return NextResponse.json(rows);
 }
 
 export async function POST(req: Request) {
   const body = await req.json();
+  if (!body.phone || !body.scheduledFor) {
+    return NextResponse.json({ error: "phone and scheduledFor required" }, { status: 400 });
+  }
   const [row] = await db
     .insert(scheduledCalls)
     .values({
-      contactId: body.contactId || null,
       phone: body.phone,
-      scheduledAt: body.scheduledAt,
-      note: body.note || "",
+      name: body.name || "",
+      contactId: body.contactId || null,
+      scheduledFor: body.scheduledFor,
+      notes: body.notes || "",
       status: "pending",
       createdAt: Date.now(),
     })
     .returning();
   return NextResponse.json(row);
-}
-
-export async function DELETE(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const id = parseInt(searchParams.get("id") || "0", 10);
-  if (!id) return NextResponse.json({ error: "id_required" }, { status: 400 });
-  await db.delete(scheduledCalls).where(eq(scheduledCalls.id, id));
-  return NextResponse.json({ ok: true });
 }

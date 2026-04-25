@@ -6,13 +6,16 @@ import { AppProviders } from "@/components/shell/providers";
 
 export const metadata: Metadata = {
   title: "DIALR — World Dialer",
-  description: "The world's most powerful browser dialer. WebRTC + SIP + P2P, anywhere on Earth.",
+  description: "Browser-native dialer + CRM. SIP, P2P and least-cost routing to anywhere on Earth.",
   applicationName: "DIALR",
   manifest: "/manifest.json",
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#10e6a5",
+  themeColor: "#0a0a0b",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -21,14 +24,22 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <body className="overflow-hidden">
+      <head>
+        <link rel="preconnect" href="https://rsms.me" />
+        <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@2.304/css/jetbrains-mono.css"
+        />
+      </head>
+      <body>
         <AppProviders>
-          <div className="flex h-screen w-screen">
+          <div className="flex h-screen w-screen overflow-hidden">
             <Sidebar />
             <div className="flex flex-col flex-1 min-w-0">
               <Header />
-              <main className="flex-1 overflow-y-auto relative">
-                <div className="absolute inset-0 grid-pattern opacity-40 pointer-events-none" />
+              <main className="app-bg flex-1 overflow-y-auto">
+                <div className="grid-pattern h-32 -mb-32 pointer-events-none opacity-50" />
                 <div className="relative">{children}</div>
               </main>
             </div>

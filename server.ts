@@ -116,4 +116,41 @@ app.prepare().then(() => {
   server.listen(port, hostname, () => {
     console.log(`\n  ▲ DIALR ready on http://${hostname}:${port}\n`);
   });
+
+  // Scheduled-call cron: every 30s, broadcast notifications to all peers
+  // for any pending scheduledCalls whose time has arrived.
+  const seenIds = new Set<number>();
+  setInterval(async () => {
+    try {
+      const { db } = await import("./src/lib/db");
+      const { scheduledCalls } = await import("./src/lib/db/schema");
+      const { and, eq, lte } = await import("drizzle-orm");
+      const now = Date.now();
+      const due = await db
+        .select()
+        .from(scheduledCalls)
+        .where(and(eq(scheduledCalls.status, "pending"), lte(scheduledCalls.scheduledFor, now)));
+      for (const row of due) {
+        if (seenIds.has(row.id)) continue;
+        seenIds.add(row.id);
+        const payload = JSON.stringify({
+          type: "scheduled_due",
+          id: row.id,
+          phone: row.phone,
+          name: row.name,
+          notes: row.notes,
+          scheduledFor: row.scheduledFor,
+        });
+        for (const p of peers.values()) {
+          if (p.ws.readyState === WebSocket.OPEN) p.ws.send(payload);
+        }
+        await db
+          .update(scheduledCalls)
+          .set({ notified: true })
+          .where(eq(scheduledCalls.id, row.id));
+      }
+    } catch (err) {
+      // ignore – cron failures shouldn't crash the server
+    }
+  }, 30000);
 });

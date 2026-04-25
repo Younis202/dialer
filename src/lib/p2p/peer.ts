@@ -1,6 +1,7 @@
 "use client";
 
 // WebRTC P2P client. Signaling goes over our /ws WebSocket server.
+// Singleton-friendly: one instance per browser tab, shared by every page via context.
 
 export type P2PState =
   | "idle"
@@ -13,7 +14,7 @@ export type P2PState =
 
 export interface P2PEvents {
   onState?: (s: P2PState, info?: any) => void;
-  onTrack?: (stream: MediaStream) => void;
+  onTrack?: (stream: MediaStream | null) => void;
   onIncoming?: (from: string) => void;
   onPresence?: (peers: string[]) => void;
   onMyHandle?: (handle: string) => void;
@@ -22,7 +23,7 @@ export interface P2PEvents {
 const ICE: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:global.stun.twilio.com:3478" },
 ];
 
 export class P2PClient {
@@ -30,28 +31,39 @@ export class P2PClient {
   private pc: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
   private state: P2PState = "idle";
-  private events: P2PEvents;
+  private listeners = new Set<P2PEvents>();
   private myHandle = "";
   private peerHandle = "";
+  private peers: string[] = [];
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private destroyed = false;
 
-  constructor(events: P2PEvents = {}) {
-    this.events = events;
+  on(events: P2PEvents) {
+    this.listeners.add(events);
+    // replay current state
+    if (this.myHandle) events.onMyHandle?.(this.myHandle);
+    if (this.peers.length) events.onPresence?.(this.peers);
+    return () => this.listeners.delete(events);
   }
 
-  get currentState(): P2PState {
-    return this.state;
+  private emit<K extends keyof P2PEvents>(k: K, ...args: any[]) {
+    for (const l of this.listeners) {
+      const fn = l[k] as any;
+      if (fn) fn(...args);
+    }
   }
 
-  get handle(): string {
-    return this.myHandle;
-  }
+  get currentState(): P2PState { return this.state; }
+  get handle(): string { return this.myHandle; }
+  get presence(): string[] { return this.peers; }
 
   private setState(s: P2PState, info?: any) {
     this.state = s;
-    this.events.onState?.(s, info);
+    this.emit("onState", s, info);
   }
 
   connect(wsUrl?: string) {
+    if (this.destroyed) return;
     const url =
       wsUrl ??
       (typeof window !== "undefined"
@@ -62,13 +74,14 @@ export class P2PClient {
 
     this.ws = new WebSocket(url);
     this.ws.onmessage = (ev) => this.handleMessage(ev.data);
-    this.ws.onopen = () => {
-      this.send({ type: "hello" });
-    };
+    this.ws.onopen = () => this.send({ type: "hello" });
     this.ws.onclose = () => {
       this.ws = null;
-      setTimeout(() => this.connect(), 2000);
+      if (this.destroyed) return;
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = setTimeout(() => this.connect(), 2000);
     };
+    this.ws.onerror = () => {};
   }
 
   private send(msg: any) {
@@ -84,14 +97,15 @@ export class P2PClient {
     switch (msg.type) {
       case "welcome":
         this.myHandle = msg.handle;
-        this.events.onMyHandle?.(msg.handle);
+        this.emit("onMyHandle", msg.handle);
         break;
       case "presence":
-        this.events.onPresence?.(msg.peers ?? []);
+        this.peers = msg.peers ?? [];
+        this.emit("onPresence", this.peers);
         break;
       case "p2p_offer":
         this.peerHandle = msg.from;
-        this.events.onIncoming?.(msg.from);
+        this.emit("onIncoming", msg.from);
         await this.handleOffer(msg.from, msg.sdp);
         break;
       case "p2p_answer":
@@ -117,7 +131,7 @@ export class P2PClient {
       if (e.candidate) this.send({ type: "p2p_ice", to: target, candidate: e.candidate.toJSON() });
     };
     this.pc.ontrack = (e) => {
-      if (e.streams[0]) this.events.onTrack?.(e.streams[0]);
+      if (e.streams[0]) this.emit("onTrack", e.streams[0]);
     };
     this.pc.onconnectionstatechange = () => {
       const st = this.pc?.connectionState;
@@ -137,19 +151,29 @@ export class P2PClient {
   async call(target: string) {
     if (this.state !== "idle" && this.state !== "ended") return;
     this.setState("ringing_out");
-    await this.setupPC(target);
-    const offer = await this.pc!.createOffer();
-    await this.pc!.setLocalDescription(offer);
-    this.send({ type: "p2p_offer", to: target, sdp: offer.sdp });
+    try {
+      await this.setupPC(target);
+      const offer = await this.pc!.createOffer();
+      await this.pc!.setLocalDescription(offer);
+      this.send({ type: "p2p_offer", to: target, sdp: offer.sdp });
+    } catch (err) {
+      this.setState("failed", err);
+      this.cleanup();
+    }
   }
 
   private async handleOffer(from: string, sdp: string) {
     this.setState("ringing_in");
-    await this.setupPC(from);
-    await this.pc!.setRemoteDescription({ type: "offer", sdp });
-    const answer = await this.pc!.createAnswer();
-    await this.pc!.setLocalDescription(answer);
-    this.send({ type: "p2p_answer", to: from, sdp: answer.sdp });
+    try {
+      await this.setupPC(from);
+      await this.pc!.setRemoteDescription({ type: "offer", sdp });
+      const answer = await this.pc!.createAnswer();
+      await this.pc!.setLocalDescription(answer);
+      this.send({ type: "p2p_answer", to: from, sdp: answer.sdp });
+    } catch (err) {
+      this.setState("failed", err);
+      this.cleanup();
+    }
   }
 
   hangup() {
@@ -166,6 +190,7 @@ export class P2PClient {
       this.pc = null;
     }
     this.peerHandle = "";
+    this.emit("onTrack", null);
   }
 
   mute(muted: boolean) {
@@ -173,7 +198,9 @@ export class P2PClient {
   }
 
   destroy() {
+    this.destroyed = true;
     this.cleanup();
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.ws) {
       try { this.ws.close(); } catch {}
       this.ws = null;

@@ -3,28 +3,20 @@ import { db } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
+const KEY = "voipms";
+
 export async function GET() {
-  const rows = await db.select().from(settings);
-  const out: Record<string, any> = {};
-  for (const r of rows) out[r.key] = r.value;
-  return NextResponse.json(out);
+  const [row] = await db.select().from(settings).where(eq(settings.key, KEY)).limit(1);
+  return NextResponse.json((row?.value as any) || {});
 }
 
-export async function PUT(req: Request) {
+export async function POST(req: Request) {
   const body = await req.json();
-  for (const [key, value] of Object.entries(body)) {
-    await db
-      .insert(settings)
-      .values({ key, value: value as any })
-      .onConflictDoUpdate({ target: settings.key, set: { value: value as any } });
+  const existing = await db.select().from(settings).where(eq(settings.key, KEY)).limit(1);
+  if (existing.length > 0) {
+    await db.update(settings).set({ value: body }).where(eq(settings.key, KEY));
+  } else {
+    await db.insert(settings).values({ key: KEY, value: body });
   }
-  return NextResponse.json({ ok: true });
-}
-
-export async function DELETE(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const key = searchParams.get("key");
-  if (!key) return NextResponse.json({ error: "key_required" }, { status: 400 });
-  await db.delete(settings).where(eq(settings.key, key));
   return NextResponse.json({ ok: true });
 }

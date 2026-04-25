@@ -1,93 +1,139 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import useSWR from "swr";
-import { Plus, FileText, Trash2, Save } from "lucide-react";
+import { FileText, Plus, Trash2, Edit3 } from "lucide-react";
 import { PageHeader } from "@/components/shell/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/sonner";
 
 const fetcher = (u: string) => fetch(u).then((r) => r.json());
 
 export default function ScriptsPage() {
   const { data, mutate } = useSWR<any[]>("/api/scripts", fetcher);
-  const [active, setActive] = useState<any>(null);
-  const [draft, setDraft] = useState({ title: "", body: "", category: "general" });
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [form, setForm] = useState({ title: "", body: "" });
 
-  useEffect(() => {
-    if (active) setDraft({ title: active.title, body: active.body, category: active.category });
-  }, [active]);
-
-  async function newScript() {
-    const res = await fetch("/api/scripts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "Untitled", body: "Hi {{name}}, this is …", category: "general" }) });
-    const r = await res.json();
-    mutate(); setActive(r);
+  function openNew() {
+    setEditing(null);
+    setForm({ title: "", body: "Hi {{name}}, this is __ from __. We help {{company}}…" });
+    setOpen(true);
+  }
+  function openEdit(s: any) {
+    setEditing(s);
+    setForm({ title: s.title, body: s.body });
+    setOpen(true);
   }
 
   async function save() {
-    if (!active) return;
-    await fetch(`/api/scripts/${active.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(draft) });
-    toast.success("Saved");
+    if (!form.title.trim() || !form.body.trim()) return;
+    if (editing) {
+      await fetch(`/api/scripts/${editing.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(form),
+      });
+    } else {
+      await fetch("/api/scripts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(form),
+      });
+    }
     mutate();
+    setOpen(false);
+    toast.success(editing ? "Script updated" : "Script created");
   }
 
-  async function remove() {
-    if (!active) return;
-    await fetch(`/api/scripts/${active.id}`, { method: "DELETE" });
-    setActive(null); mutate();
+  async function remove(id: number) {
+    await fetch(`/api/scripts/${id}`, { method: "DELETE" });
+    mutate();
   }
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto">
       <PageHeader
-        title="Scripts"
-        subtitle="Reusable templates with {{variables}} for in-call use"
-        actions={<Button size="sm" onClick={newScript}><Plus className="h-3.5 w-3.5 mr-1.5" />New Script</Button>}
+        title="Call Scripts"
+        subtitle="Reusable scripts with {{name}} and {{company}} placeholders"
+        actions={
+          <Button size="sm" onClick={openNew}>
+            <Plus className="h-3.5 w-3.5 mr-1.5" />New Script
+          </Button>
+        }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4">
-        <div className="data-card !p-2 max-h-[600px] overflow-y-auto">
-          {data?.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setActive(s)}
-              className={`w-full text-left rounded-lg p-3 transition-colors ${active?.id === s.id ? "bg-accent" : "hover:bg-accent/40"}`}
-            >
-              <div className="flex items-center gap-2">
-                <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="font-medium text-sm truncate">{s.title}</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {data?.map((s) => (
+          <div key={s.id} className="data-card flex flex-col gap-3">
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <FileText className="h-4 w-4" />
               </div>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mt-1">{s.category}</div>
-            </button>
-          ))}
-          {data && data.length === 0 && <div className="p-6 text-center text-muted-foreground text-xs">No scripts</div>}
-        </div>
-
-        <div className="data-card">
-          {active ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="text-lg font-display font-semibold border-0 bg-transparent !text-lg p-0 h-auto" />
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={remove}><Trash2 className="h-3.5 w-3.5" /></Button>
-                  <Button size="sm" onClick={save}><Save className="h-3.5 w-3.5 mr-1.5" />Save</Button>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium">{s.title}</div>
+                <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                  {s.body.length} chars
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label>Category</Label><Input value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} /></div>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Body</Label>
-                <Textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} rows={20} className="font-mono text-sm" />
+              <div className="flex">
+                <Button variant="ghost" size="icon" onClick={() => openEdit(s)}>
+                  <Edit3 className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => remove(s.id)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
               </div>
             </div>
-          ) : (
-            <div className="py-24 text-center text-muted-foreground text-sm">Select or create a script</div>
-          )}
-        </div>
+            <div className="text-sm text-muted-foreground whitespace-pre-wrap line-clamp-5 leading-relaxed">
+              {s.body}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {Array.from(new Set(Array.from(s.body.matchAll(/\{\{(\w+)\}\}/g)).map((m: any) => m[1]))).map((v: any) => (
+                <Badge key={v} variant="outline" className="text-[10px] font-mono">{`{{${v}}}`}</Badge>
+              ))}
+            </div>
+          </div>
+        ))}
+        {data && data.length === 0 && (
+          <div className="data-card md:col-span-2 py-16 text-center">
+            <FileText className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" strokeWidth={1.2} />
+            <div className="text-sm text-muted-foreground">No scripts yet</div>
+          </div>
+        )}
       </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle>{editing ? "Edit" : "New"} Script</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label>Title</Label>
+              <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Cold call opener" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Body</Label>
+              <Textarea
+                value={form.body}
+                onChange={(e) => setForm({ ...form, body: e.target.value })}
+                rows={10}
+                className="font-mono text-sm"
+              />
+              <div className="text-[10px] text-muted-foreground">
+                Use <code className="font-mono bg-card/60 px-1 rounded">{`{{name}}`}</code>, <code className="font-mono bg-card/60 px-1 rounded">{`{{company}}`}</code>, <code className="font-mono bg-card/60 px-1 rounded">{`{{phone}}`}</code> as placeholders.
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button onClick={save}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

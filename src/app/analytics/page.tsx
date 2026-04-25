@@ -1,121 +1,138 @@
 "use client";
-import useSWR from "swr";
 import { useMemo } from "react";
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar, PieChart, Pie, Cell, CartesianGrid } from "recharts";
+import useSWR from "swr";
+import { TrendingUp, Phone, Clock, DollarSign, Globe2 } from "lucide-react";
 import { PageHeader } from "@/components/shell/page-header";
+import { Flag } from "@/components/ui/flag";
 import { formatCurrency, formatDuration } from "@/lib/utils";
 
 const fetcher = (u: string) => fetch(u).then((r) => r.json());
 
+function startOfDay(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
 export default function AnalyticsPage() {
-  const { data: calls } = useSWR<any[]>("/api/calls?limit=500", fetcher, { refreshInterval: 10000 });
+  const { data: calls } = useSWR<any[]>("/api/calls?limit=1000", fetcher, { refreshInterval: 30000 });
+  const { data: dispositions } = useSWR<any[]>("/api/dispositions", fetcher);
 
-  const { byDay, byCountry, byProvider, totalCalls, totalSpend, totalMinutes, totalConnected } = useMemo(() => {
-    const cs = calls ?? [];
-    const dayMap = new Map<string, { day: string; calls: number; cost: number; mins: number }>();
-    const countryMap = new Map<string, number>();
-    const providerMap = new Map<string, number>();
-    let totalSpend = 0, totalMinutes = 0, totalConnected = 0;
+  const stats = useMemo(() => {
+    if (!calls) return null;
+    const now = new Date();
+    const days: { day: string; count: number; mins: number; cost: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const start = startOfDay(d);
+      const end = start + 86400000;
+      const subset = calls.filter((c) => c.startedAt >= start && c.startedAt < end);
+      days.push({
+        day: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+        count: subset.length,
+        mins: subset.reduce((a, c) => a + (c.duration || 0), 0) / 60,
+        cost: subset.reduce((a, c) => a + (c.cost || 0), 0),
+      });
+    }
+    const totalCalls = calls.length;
+    const totalMins = calls.reduce((a, c) => a + (c.duration || 0), 0) / 60;
+    const totalSpend = calls.reduce((a, c) => a + (c.cost || 0), 0);
+    const avgDur = totalCalls ? totalMins / totalCalls : 0;
+    const connected = calls.filter((c) => (c.duration || 0) > 5).length;
+    const connectRate = totalCalls ? (connected / totalCalls) * 100 : 0;
 
-    for (const c of cs) {
-      const day = new Date(c.startedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      const e = dayMap.get(day) ?? { day, calls: 0, cost: 0, mins: 0 };
-      e.calls++; e.cost += c.cost || 0; e.mins += (c.duration || 0) / 60;
-      dayMap.set(day, e);
-
-      const cn = c.countryName || c.countryCode || "Unknown";
-      countryMap.set(cn, (countryMap.get(cn) || 0) + 1);
-      providerMap.set(c.provider || "demo", (providerMap.get(c.provider || "demo") || 0) + 1);
-
-      totalSpend += c.cost || 0;
-      totalMinutes += c.duration || 0;
-      if ((c.duration || 0) > 0) totalConnected++;
+    const countryStats = new Map<string, { code: string; name: string; calls: number }>();
+    for (const c of calls) {
+      if (!c.countryCode) continue;
+      const cc = String(c.countryCode).toUpperCase();
+      const e = countryStats.get(cc) || { code: cc, name: c.countryName || cc, calls: 0 };
+      e.calls++;
+      countryStats.set(cc, e);
     }
 
-    return {
-      byDay: [...dayMap.values()].slice(-30),
-      byCountry: [...countryMap.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8),
-      byProvider: [...providerMap.entries()].map(([name, value]) => ({ name, value })),
-      totalCalls: cs.length,
-      totalSpend, totalMinutes, totalConnected,
-    };
-  }, [calls]);
+    const dispMap = new Map<number, number>();
+    for (const c of calls) if (c.dispositionId) dispMap.set(c.dispositionId, (dispMap.get(c.dispositionId) || 0) + 1);
+    const dispositionStats = (dispositions ?? []).map((d) => ({ ...d, count: dispMap.get(d.id) || 0 })).sort((a, b) => b.count - a.count);
 
-  const COLORS = ["#10e6a5", "#3b82f6", "#a855f7", "#f59e0b", "#ef4444", "#06b6d4", "#84cc16", "#ec4899"];
+    return { days, totalCalls, totalMins, totalSpend, avgDur, connectRate, topCountries: [...countryStats.values()].sort((a, b) => b.calls - a.calls).slice(0, 8), dispositionStats };
+  }, [calls, dispositions]);
+
+  const maxCount = Math.max(1, ...(stats?.days.map((d) => d.count) ?? [1]));
+  const maxDispCount = Math.max(1, ...(stats?.dispositionStats.map((d) => d.count) ?? [1]));
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto">
-      <PageHeader title="Analytics" subtitle="Performance, cost, and reach across all your calls" />
+      <PageHeader title="Analytics" subtitle="Last 14 days" />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <Stat label="Total Calls" value={totalCalls} />
-        <Stat label="Connected" value={totalConnected} />
-        <Stat label="Talk Time" value={formatDuration(totalMinutes)} />
-        <Stat label="Spend" value={formatCurrency(totalSpend)} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <Stat icon={Phone} label="Total Calls" value={stats?.totalCalls ?? 0} />
+        <Stat icon={Clock} label="Talk Time" value={formatDuration((stats?.totalMins ?? 0) * 60)} />
+        <Stat icon={DollarSign} label="Total Spend" value={formatCurrency(stats?.totalSpend ?? 0)} />
+        <Stat icon={TrendingUp} label="Connect Rate" value={`${(stats?.connectRate ?? 0).toFixed(0)}%`} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="data-card">
-          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">CALLS PER DAY</div>
-          <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={byDay}>
-              <defs>
-                <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#10e6a5" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="#10e6a5" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-              <XAxis dataKey="day" stroke="#666" fontSize={10} />
-              <YAxis stroke="#666" fontSize={10} />
-              <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #222", borderRadius: 8 }} />
-              <Area type="monotone" dataKey="calls" stroke="#10e6a5" strokeWidth={2} fill="url(#g1)" />
-            </AreaChart>
-          </ResponsiveContainer>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="data-card lg:col-span-2">
+          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-4">
+            CALLS PER DAY
+          </div>
+          <div className="flex items-end gap-2 h-56">
+            {stats?.days.map((d) => (
+              <div key={d.day} className="flex-1 flex flex-col items-center gap-1.5 min-w-0 group">
+                <div className="text-[10px] font-mono text-muted-foreground tabular-nums opacity-0 group-hover:opacity-100 transition-opacity">
+                  {d.count}
+                </div>
+                <div className="w-full flex-1 flex items-end">
+                  <div
+                    className="w-full rounded-t-md bg-gradient-to-t from-primary/40 to-primary transition-all hover:from-primary hover:to-success"
+                    style={{ height: `${(d.count / maxCount) * 100}%`, minHeight: "2px" }}
+                  />
+                </div>
+                <div className="text-[9px] font-mono text-muted-foreground truncate w-full text-center">
+                  {d.day}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="data-card">
-          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">SPEND PER DAY ($)</div>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={byDay}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-              <XAxis dataKey="day" stroke="#666" fontSize={10} />
-              <YAxis stroke="#666" fontSize={10} />
-              <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #222", borderRadius: 8 }} />
-              <Bar dataKey="cost" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-4">
+            TOP COUNTRIES
+          </div>
+          <div className="space-y-2.5">
+            {stats?.topCountries.map((c) => (
+              <div key={c.code} className="flex items-center gap-3">
+                <Flag country={c.code} size="md" />
+                <div className="flex-1 text-sm truncate">{c.name}</div>
+                <span className="font-mono text-xs tabular-nums text-muted-foreground">{c.calls}</span>
+              </div>
+            ))}
+            {stats?.topCountries.length === 0 && (
+              <div className="text-center text-xs text-muted-foreground py-8">
+                <Globe2 className="h-8 w-8 mx-auto opacity-30 mb-2" />
+                No data yet
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="data-card">
-          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">TOP COUNTRIES</div>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={byCountry} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-              <XAxis type="number" stroke="#666" fontSize={10} />
-              <YAxis dataKey="name" type="category" stroke="#666" fontSize={10} width={100} />
-              <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #222", borderRadius: 8 }} />
-              <Bar dataKey="value" fill="#10e6a5" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="data-card">
-          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">PROVIDER MIX</div>
-          <ResponsiveContainer width="100%" height={240}>
-            <PieChart>
-              <Pie data={byProvider} dataKey="value" nameKey="name" innerRadius={60} outerRadius={90} paddingAngle={2}>
-                {byProvider.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Pie>
-              <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #222", borderRadius: 8 }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex flex-wrap gap-2 mt-2 justify-center">
-            {byProvider.map((p, i) => (
-              <span key={p.name} className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider">
-                <span className="h-2 w-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                {p.name}
-              </span>
+        <div className="data-card lg:col-span-3">
+          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-4">
+            DISPOSITIONS
+          </div>
+          <div className="space-y-2">
+            {stats?.dispositionStats.map((d) => (
+              <div key={d.id} className="flex items-center gap-3">
+                <span className="h-2 w-2 rounded-full" style={{ background: d.color }} />
+                <div className="text-sm font-medium w-32">{d.name}</div>
+                <div className="flex-1 h-2 bg-card rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${(d.count / maxDispCount) * 100}%`, background: d.color }}
+                  />
+                </div>
+                <span className="font-mono text-xs tabular-nums text-muted-foreground w-10 text-right">{d.count}</span>
+              </div>
             ))}
           </div>
         </div>
@@ -124,11 +141,16 @@ export default function AnalyticsPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number | string }) {
+function Stat({ icon: Icon, label, value }: { icon: any; label: string; value: any }) {
   return (
-    <div className="data-card !p-4">
-      <div className="stat-label">{label}</div>
-      <div className="stat-num mt-1">{value}</div>
+    <div className="data-card !p-4 flex items-start gap-3">
+      <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
+        <div className="font-display text-xl font-semibold mt-0.5 tabular-nums truncate">{value}</div>
+      </div>
     </div>
   );
 }

@@ -6,9 +6,11 @@ import { eq } from "drizzle-orm";
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json();
-  const patch: any = {};
-  ["title", "body", "category"].forEach((k) => { if (k in body) patch[k] = body[k]; });
-  const [row] = await db.update(scripts).set(patch).where(eq(scripts.id, parseInt(id, 10))).returning();
+  const update: any = {};
+  for (const k of ["title", "body", "category"]) {
+    if (k in body) update[k] = body[k];
+  }
+  const [row] = await db.update(scripts).set(update).where(eq(scripts.id, parseInt(id, 10))).returning();
   return NextResponse.json(row);
 }
 

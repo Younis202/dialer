@@ -1,101 +1,121 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { motion } from "framer-motion";
-import { Phone, Plus, MessageSquare, ArrowUpRight, Wifi } from "lucide-react";
+import {
+  Phone, Plus, MessageSquare, ArrowUpRight, Wifi, Copy, Check, Send,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Keypad } from "@/components/dialer/keypad";
 import { NumberDisplay } from "@/components/dialer/number-display";
 import { CostOptimizer } from "@/components/dialer/cost-optimizer";
 import { ActiveCall } from "@/components/dialer/active-call";
-import { parsePhone, asYouType } from "@/lib/phone";
+import { Flag } from "@/components/ui/flag";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { parsePhone } from "@/lib/phone";
 import { cheapestProvider } from "@/lib/rates";
 import { formatDuration, formatRelative, formatCurrency } from "@/lib/utils";
-import { P2PClient } from "@/lib/p2p/peer";
+import { useP2P } from "@/components/shell/p2p-provider";
+import { useSip } from "@/components/shell/sip-provider";
 import { toast } from "@/components/ui/sonner";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
+type Mode = "idle" | "telephony" | "p2p";
+
 export default function DialerPage() {
+  const search = useSearchParams();
+  const router = useRouter();
   const [raw, setRaw] = useState("");
   const [callOpen, setCallOpen] = useState(false);
-  const [callState, setCallState] = useState<string>("idle");
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [myHandle, setMyHandle] = useState<string>("");
-  const [peers, setPeers] = useState<string[]>([]);
-  const peerRef = useRef<P2PClient | null>(null);
+  const [mode, setMode] = useState<Mode>("idle");
+  const [smsOpen, setSmsOpen] = useState(false);
+  const [smsBody, setSmsBody] = useState("");
+  const [copiedHandle, setCopiedHandle] = useState(false);
+
   const callStartRef = useRef<number>(0);
   const callIdRef = useRef<number | null>(null);
+  const callerCcRef = useRef<string>("US");
+
+  const sip = useSip();
+  const p2p = useP2P();
 
   const parsed = useMemo(() => parsePhone(raw), [raw]);
   const cheapest = useMemo(() => cheapestProvider(parsed.country || "US"), [parsed.country]);
 
-  const { data: stats } = useSWR<{ todayCalls: number; todayMinutes: number; todaySpend: number; contacts: number }>(
-    "/api/stats",
-    fetcher,
-    { refreshInterval: 10000 }
-  );
-  const { data: recent, mutate: refreshRecent } = useSWR<any[]>("/api/calls?limit=8", fetcher, { refreshInterval: 5000 });
+  const { data: stats } = useSWR<{
+    todayCalls: number; todayMinutes: number; todaySpend: number; contacts: number;
+  }>("/api/stats", fetcher, { refreshInterval: 15000 });
 
-  // Init P2P
-  useEffect(() => {
-    const p = new P2PClient({
-      onState: (s) => {
-        setCallState(s);
-        if (s === "in_call") {
-          callStartRef.current = Date.now();
-          setCallOpen(true);
-        }
-        if (s === "ended" || s === "failed") {
-          finalizeCall(s);
-        }
-      },
-      onTrack: (stream) => setRemoteStream(stream),
-      onMyHandle: (h) => setMyHandle(h),
-      onPresence: (p) => setPeers(p),
-      onIncoming: (from) => {
-        toast(`Incoming P2P call from ${from}`);
-        setCallOpen(true);
-      },
-    });
-    p.connect();
-    peerRef.current = p;
-    return () => p.destroy();
-  }, []);
+  const { data: recent, mutate: refreshRecent } = useSWR<any[]>("/api/calls?limit=8", fetcher, {
+    refreshInterval: 8000,
+  });
 
-  // Type formatting
+  // Pre-fill from `?dial=` query param
   useEffect(() => {
-    if (!raw) return;
-    if (raw.length > 4 && raw.length < 20) {
-      const fmt = asYouType(raw);
-      if (fmt && fmt !== raw && raw.startsWith("+")) {
-        // keep raw as user typed
-      }
+    const d = search.get("dial");
+    if (d) {
+      setRaw(d);
+      router.replace("/", { scroll: false });
     }
-  }, [raw]);
+  }, [search, router]);
 
-  // Keyboard input
+  // SIP state -> UI state
+  useEffect(() => {
+    if (mode !== "telephony") return;
+    const s = sip.state;
+    if (s === "in_call") {
+      callStartRef.current = Date.now();
+      setCallOpen(true);
+    }
+    if (s === "ended" || s === "failed" || s === "disconnected") {
+      finalizeCall(s, "telephony");
+    }
+  }, [sip.state, mode]); // eslint-disable-line
+
+  // P2P state -> UI state
+  useEffect(() => {
+    if (mode !== "p2p") return;
+    const s = p2p.state;
+    if (s === "in_call") {
+      callStartRef.current = Date.now();
+      setCallOpen(true);
+    }
+    if (s === "ended" || s === "failed") {
+      finalizeCall(s, "p2p");
+    }
+  }, [p2p.state, mode]); // eslint-disable-line
+
+  // Keyboard input — only when not in inputs
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (callOpen && e.key === "Escape") { hangup(); return; }
+      if (callOpen) return;
       if (/^[0-9*#+]$/.test(e.key)) {
         setRaw((r) => r + e.key);
       } else if (e.key === "Backspace") {
         setRaw((r) => r.slice(0, -1));
       } else if (e.key === "Enter") {
         if (parsed.isValid) startCall();
-      } else if (e.key === "Escape") {
-        if (callOpen) hangup();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, [callOpen, parsed.isValid]); // eslint-disable-line
 
   async function startCall() {
     if (!parsed.isValid) return;
+    callerCcRef.current = parsed.country;
+
+    // Create the call row first so we have an id even if SIP fails
     const res = await fetch("/api/calls", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -103,64 +123,130 @@ export default function DialerPage() {
         toNumber: parsed.e164,
         countryCode: parsed.country,
         countryName: parsed.countryName,
-        provider: cheapest.provider,
+        provider: sip.registered ? "voipms" : cheapest.provider,
       }),
     });
+    if (res.status === 403) {
+      toast.error("Number is on your DNC list");
+      return;
+    }
     const data = await res.json();
-    callIdRef.current = data.id;
+    callIdRef.current = data?.id ?? null;
     callStartRef.current = Date.now();
+
+    setMode("telephony");
     setCallOpen(true);
-    setCallState("connecting");
-    setTimeout(() => setCallState("ringing"), 600);
-    setTimeout(() => setCallState("in_call"), 2000);
-    toast("Calling " + parsed.international, { description: `via ${cheapest.provider} · $${cheapest.perMinute.toFixed(4)}/min` });
+
+    if (sip.registered && sip.client) {
+      try {
+        sip.client.call(parsed.e164);
+        toast(`Calling ${parsed.international}`, {
+          description: `via ${sip.config?.uri?.includes("voip.ms") ? "Voip.ms" : "SIP"}`,
+        });
+        return;
+      } catch (err: any) {
+        toast.error(`Call failed: ${err?.message || "unknown"}`);
+      }
+    } else {
+      toast.error("SIP not registered. Configure in Settings to place real calls.");
+      // close the placeholder
+      setTimeout(() => {
+        setCallOpen(false);
+        setMode("idle");
+        finalizeCall("failed", "telephony");
+      }, 1500);
+    }
   }
 
   function callPeer(handle: string) {
-    if (!peerRef.current) return;
+    if (!p2p.client) return;
+    setMode("p2p");
     setCallOpen(true);
-    setCallState("ringing_out");
-    peerRef.current.call(handle);
+    p2p.client.call(handle);
+    toast(`Calling ${handle}`, { description: "Free P2P · End-to-end encrypted" });
   }
 
-  async function finalizeCall(finalState: string) {
+  async function finalizeCall(finalState: string, modeUsed: Mode) {
     const dur = Math.max(0, Math.floor((Date.now() - callStartRef.current) / 1000));
+    const cost = modeUsed === "p2p" ? 0 : dur * (cheapest.perMinute / 60);
     if (callIdRef.current) {
-      await fetch(`/api/calls/${callIdRef.current}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ duration: dur, status: finalState, cost: dur * (cheapest.perMinute / 60) }),
-      });
+      try {
+        await fetch(`/api/calls/${callIdRef.current}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ duration: dur, status: finalState, cost, endedAt: Date.now() }),
+        });
+      } catch {}
       callIdRef.current = null;
     }
     setTimeout(() => {
       setCallOpen(false);
-      setCallState("idle");
-      setRemoteStream(null);
+      setMode("idle");
       refreshRecent();
     }, 600);
   }
 
   function hangup() {
-    peerRef.current?.hangup();
-    finalizeCall("ended");
+    if (mode === "p2p") p2p.client?.hangup();
+    else sip.client?.hangup();
+    finalizeCall("ended", mode);
   }
+
+  async function sendSms() {
+    if (!parsed.isValid || !smsBody.trim()) return;
+    const res = await fetch("/api/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ toNumber: parsed.e164, body: smsBody }),
+    });
+    if (res.ok) {
+      toast.success("Message sent");
+      setSmsBody("");
+      setSmsOpen(false);
+    } else {
+      toast.error("Failed to send. Check Voip.ms API in Settings.");
+    }
+  }
+
+  function copyHandle() {
+    if (!p2p.myHandle) return;
+    navigator.clipboard.writeText(p2p.myHandle);
+    setCopiedHandle(true);
+    setTimeout(() => setCopiedHandle(false), 1500);
+  }
+
+  const callState =
+    mode === "p2p" ? p2p.state : mode === "telephony" ? sip.state : "idle";
+  const remoteStream =
+    mode === "p2p" ? p2p.remoteStream : mode === "telephony" ? sip.remoteStream : null;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 p-6 max-w-[1600px] mx-auto">
       {/* CENTER — DIALER */}
-      <div className="space-y-6">
-        <div className="flex items-end justify-between">
+      <div className="space-y-6 min-w-0">
+        <div className="flex items-end justify-between flex-wrap gap-3">
           <div>
             <h1 className="font-display text-3xl font-semibold tracking-tight">Dialer</h1>
-            <p className="text-sm text-muted-foreground mt-1">Type, paste, or speak — call anywhere on Earth.</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Type, paste, or speak — call anywhere on Earth.
+            </p>
           </div>
-          {myHandle && (
-            <div className="flex items-center gap-2">
+          {p2p.myHandle && (
+            <button
+              onClick={copyHandle}
+              className="flex items-center gap-2 rounded-full border border-border/60 bg-card/40 px-3 py-1.5 hover:bg-card/80 transition-colors"
+            >
               <Wifi className="h-3.5 w-3.5 text-success" />
-              <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">Your Handle</span>
-              <Badge variant="default" className="font-mono">{myHandle}</Badge>
-            </div>
+              <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
+                Your Handle
+              </span>
+              <span className="font-mono text-xs font-semibold">{p2p.myHandle}</span>
+              {copiedHandle ? (
+                <Check className="h-3 w-3 text-success" />
+              ) : (
+                <Copy className="h-3 w-3 text-muted-foreground" />
+              )}
+            </button>
           )}
         </div>
 
@@ -181,7 +267,9 @@ export default function DialerPage() {
                 size="icon"
                 variant="outline"
                 className="h-14 w-14 rounded-2xl"
-                onClick={() => navigator.clipboard?.readText().then((t) => t && setRaw(t)).catch(() => {})}
+                onClick={() =>
+                  navigator.clipboard?.readText().then((t) => t && setRaw(t)).catch(() => {})
+                }
                 aria-label="Paste"
               >
                 <Plus className="h-5 w-5" />
@@ -205,14 +293,28 @@ export default function DialerPage() {
                 <Phone className="h-7 w-7 text-primary-foreground" strokeWidth={2.2} />
               </motion.button>
 
-              <Button size="icon" variant="outline" className="h-14 w-14 rounded-2xl" aria-label="SMS">
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-14 w-14 rounded-2xl"
+                aria-label="SMS"
+                disabled={!parsed.isValid}
+                onClick={() => setSmsOpen(true)}
+              >
                 <MessageSquare className="h-5 w-5" />
               </Button>
             </div>
           </div>
         </div>
 
-        <CostOptimizerCard parsed={parsed} />
+        {parsed.isValid && (
+          <div className="data-card">
+            <CostOptimizer
+              country={parsed.country}
+              active={sip.registered ? "voipms" : "voipms"}
+            />
+          </div>
+        )}
       </div>
 
       {/* RIGHT — STATS + RECENT */}
@@ -229,23 +331,25 @@ export default function DialerPage() {
             <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
               DIALR Network
             </div>
-            <Badge variant="default" className="font-mono">{peers.length} ONLINE</Badge>
+            <Badge variant="default" className="font-mono">
+              {p2p.peers.filter((x) => x !== p2p.myHandle).length} ONLINE
+            </Badge>
           </div>
-          {peers.length === 0 ? (
+          {p2p.peers.filter((x) => x !== p2p.myHandle).length === 0 ? (
             <div className="text-xs text-muted-foreground py-6 text-center">
               No peers online. Open this app in another tab to test free P2P calling.
             </div>
           ) : (
             <div className="space-y-1.5">
-              {peers.filter((p) => p !== myHandle).slice(0, 5).map((p) => (
+              {p2p.peers.filter((x) => x !== p2p.myHandle).slice(0, 5).map((peer) => (
                 <button
-                  key={p}
-                  onClick={() => callPeer(p)}
+                  key={peer}
+                  onClick={() => callPeer(peer)}
                   className="w-full flex items-center justify-between rounded-xl px-3 py-2 hover:bg-accent/60 transition-colors group"
                 >
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-success" />
-                    <span className="font-mono text-xs">{p}</span>
+                    <span className="font-mono text-xs">{peer}</span>
                   </div>
                   <Phone className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
                 </button>
@@ -259,7 +363,10 @@ export default function DialerPage() {
             <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
               Recent Calls
             </div>
-            <a href="/history" className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+            <a
+              href="/history"
+              className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+            >
               ALL <ArrowUpRight className="h-3 w-3" />
             </a>
           </div>
@@ -273,12 +380,14 @@ export default function DialerPage() {
                   onClick={() => setRaw(c.toNumber)}
                   className="w-full flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-accent/60 transition-colors"
                 >
-                  <div className="h-8 w-8 rounded-lg bg-card border border-border/40 flex items-center justify-center text-sm">
-                    {c.countryCode ? flagEmoji(c.countryCode) : "·"}
+                  <div className="h-8 w-8 rounded-lg bg-card border border-border/40 flex items-center justify-center">
+                    <Flag country={c.countryCode} size="sm" />
                   </div>
                   <div className="flex-1 text-left min-w-0">
                     <div className="text-sm font-mono truncate">{c.toNumber}</div>
-                    <div className="text-[10px] text-muted-foreground">{formatRelative(c.startedAt)} · {formatDuration(c.duration || 0)}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {formatRelative(c.startedAt)} · {formatDuration(c.duration || 0)}
+                    </div>
                   </div>
                   <Phone className="h-3.5 w-3.5 text-muted-foreground" />
                 </button>
@@ -293,9 +402,43 @@ export default function DialerPage() {
         parsed={parsed}
         state={callState}
         remoteStream={remoteStream}
+        variant={mode === "p2p" ? "p2p" : "telephony"}
         onHangup={hangup}
-        onMute={(m) => peerRef.current?.mute(m)}
+        onMute={(m) => (mode === "p2p" ? p2p.client?.mute(m) : sip.client?.mute(m))}
+        onHold={mode === "p2p" ? undefined : (h) => sip.client?.hold(h)}
+        onDtmf={mode === "p2p" ? undefined : (d) => sip.client?.sendDTMF(d)}
       />
+
+      {/* SMS dialog */}
+      <Dialog open={smsOpen} onOpenChange={setSmsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Flag country={parsed.country} size="sm" />
+              <span className="font-mono">{parsed.international || raw}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <Textarea
+              value={smsBody}
+              onChange={(e) => setSmsBody(e.target.value)}
+              placeholder="Hello…"
+              rows={5}
+              maxLength={1600}
+            />
+            <div className="flex justify-between text-[10px] font-mono text-muted-foreground mt-1">
+              <span>SMS via Voip.ms</span>
+              <span>{smsBody.length}/1600</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSmsOpen(false)}>Cancel</Button>
+            <Button onClick={sendSms}>
+              <Send className="h-3.5 w-3.5 mr-1.5" />Send
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -307,20 +450,4 @@ function StatCard({ label, value }: { label: string; value: number | string }) {
       <div className="stat-num mt-1">{value}</div>
     </div>
   );
-}
-
-function CostOptimizerCard({ parsed }: { parsed: ReturnType<typeof parsePhone> }) {
-  if (!parsed.isValid) return null;
-  return (
-    <div className="data-card">
-      <CostOptimizer country={parsed.country} active="voipms" />
-    </div>
-  );
-}
-
-function flagEmoji(country: string) {
-  if (!country || country.length !== 2) return "·";
-  const A = 0x1f1e6;
-  const codes = [...country.toUpperCase()].map((c) => A + c.charCodeAt(0) - 65);
-  return String.fromCodePoint(...codes);
 }

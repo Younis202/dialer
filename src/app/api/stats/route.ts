@@ -4,25 +4,24 @@ import { calls, contacts } from "@/lib/db/schema";
 import { gte, sql } from "drizzle-orm";
 
 export async function GET() {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const since = startOfDay.getTime();
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
   const [todayAgg] = await db
     .select({
-      n: sql<number>`count(*)::int`,
-      mins: sql<number>`coalesce(sum(${calls.duration}),0)::int`,
-      spend: sql<number>`coalesce(sum(${calls.cost}),0)::float`,
+      count: sql<number>`count(*)::int`,
+      seconds: sql<number>`coalesce(sum(${calls.duration}), 0)::int`,
+      spend: sql<number>`coalesce(sum(${calls.cost}), 0)::float`,
     })
     .from(calls)
-    .where(gte(calls.startedAt, since));
+    .where(gte(calls.startedAt, startOfDay));
 
-  const [contactsAgg] = await db.select({ n: sql<number>`count(*)::int` }).from(contacts);
+  const [contactAgg] = await db.select({ c: sql<number>`count(*)::int` }).from(contacts);
 
   return NextResponse.json({
-    todayCalls: todayAgg?.n ?? 0,
-    todayMinutes: Math.round((todayAgg?.mins ?? 0) / 60),
+    todayCalls: todayAgg?.count ?? 0,
+    todayMinutes: Math.round((todayAgg?.seconds ?? 0) / 60),
     todaySpend: todayAgg?.spend ?? 0,
-    contacts: contactsAgg?.n ?? 0,
+    contacts: contactAgg?.c ?? 0,
   });
 }

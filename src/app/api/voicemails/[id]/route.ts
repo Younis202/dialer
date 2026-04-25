@@ -1,21 +1,21 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { calls } from "@/lib/db/schema";
+import { voicemails } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json();
   const update: any = {};
-  for (const k of ["duration", "cost", "status", "notes", "transcript", "endedAt", "dispositionId", "recordingUrl"]) {
+  for (const k of ["read", "transcript"]) {
     if (k in body) update[k] = body[k];
   }
-  const [row] = await db.update(calls).set(update).where(eq(calls.id, parseInt(id, 10))).returning();
+  const [row] = await db.update(voicemails).set(update).where(eq(voicemails.id, parseInt(id, 10))).returning();
   return NextResponse.json(row);
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  await db.delete(calls).where(eq(calls.id, parseInt(id, 10)));
+  await db.delete(voicemails).where(eq(voicemails.id, parseInt(id, 10)));
   return NextResponse.json({ ok: true });
 }

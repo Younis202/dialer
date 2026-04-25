@@ -4,8 +4,8 @@
 
 @layer base {
   :root {
-    --font-sans: "Inter", system-ui, -apple-system, sans-serif;
-    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+    --font-sans: "Inter", "Inter Variable", system-ui, -apple-system, sans-serif;
+    --font-mono: "JetBrains Mono", "JetBrains Mono Variable", ui-monospace, monospace;
     --font-display: "Inter Display", "Inter", system-ui, sans-serif;
 
     --background: 240 10% 3.9%;
@@ -31,15 +31,14 @@
     --warning: 38 92% 56%;
     --info: 217 91% 60%;
     --radius: 0.875rem;
-
-    --grad-aurora: radial-gradient(at 20% 0%, hsl(158 95% 48% / 0.18) 0px, transparent 50%),
-      radial-gradient(at 80% 0%, hsl(217 91% 60% / 0.12) 0px, transparent 50%),
-      radial-gradient(at 0% 50%, hsl(280 80% 60% / 0.08) 0px, transparent 50%),
-      radial-gradient(at 80% 80%, hsl(158 95% 48% / 0.06) 0px, transparent 50%);
   }
 
   * {
     @apply border-border;
+  }
+
+  html, body {
+    @apply h-full;
   }
 
   html {
@@ -51,8 +50,7 @@
   body {
     @apply bg-background text-foreground font-sans;
     font-feature-settings: "cv11", "ss01", "ss03";
-    background-image: var(--grad-aurora);
-    background-attachment: fixed;
+    overscroll-behavior: none;
   }
 
   ::selection {
@@ -60,46 +58,41 @@
     color: hsl(var(--primary-foreground));
   }
 
-  ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  /* Slim modern scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
     background: hsl(var(--border));
     border-radius: 8px;
-    border: 2px solid hsl(var(--background));
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground) / 0.4);
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.4); }
+
+  input, textarea, select {
+    font-feature-settings: "tnum" 1;
   }
 
-  input,
-  textarea,
-  select {
-    font-feature-settings: "tnum" 1;
+  /* Faster reduced-motion when requested */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
 @layer components {
-  .glass {
-    background: linear-gradient(
-      to bottom right,
-      hsl(var(--card) / 0.7),
-      hsl(var(--card) / 0.4)
-    );
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border: 1px solid hsl(var(--border) / 0.8);
+  /* Lightweight card surface (no blur — repaint-safe) */
+  .surface {
+    @apply bg-card/70 border border-border/60 rounded-2xl;
   }
 
-  .glass-strong {
-    background: hsl(var(--card) / 0.85);
-    backdrop-filter: blur(40px) saturate(180%);
-    -webkit-backdrop-filter: blur(40px) saturate(180%);
-    border: 1px solid hsl(var(--border));
+  /* Used sparingly on the dialer hero only */
+  .glass {
+    background: linear-gradient(to bottom right,
+      hsl(var(--card) / 0.85),
+      hsl(var(--card) / 0.55));
+    border: 1px solid hsl(var(--border) / 0.8);
+    box-shadow: 0 1px 0 hsl(var(--foreground) / 0.04) inset, 0 30px 60px -30px hsl(0 0% 0% / 0.6);
   }
 
   .text-gradient-primary {
@@ -110,108 +103,88 @@
   }
 
   .keypad-key {
-    @apply relative flex flex-col items-center justify-center
-           rounded-2xl bg-card/40 border border-border/40
-           text-3xl font-display font-medium tracking-tight
-           transition-all duration-150 ease-out
-           hover:bg-card/80 hover:border-border active:scale-[0.97]
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60
-           select-none cursor-pointer overflow-hidden;
-    height: 64px;
-  }
-
-  .keypad-key::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at center, hsl(var(--primary) / 0.18) 0%, transparent 60%);
-    opacity: 0;
-    transition: opacity 0.2s;
-  }
-
-  .keypad-key:active::before {
-    opacity: 1;
+    @apply relative flex flex-col items-center justify-center rounded-2xl bg-card/40 border border-border/40 text-3xl font-display font-medium tracking-tight transition-colors duration-100 hover:bg-card/80 hover:border-border active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 select-none cursor-pointer overflow-hidden;
+    aspect-ratio: 1.6 / 1;
   }
 
   .keypad-letters {
-    @apply text-[10px] font-mono uppercase tracking-[0.2em] text-muted-foreground/60 mt-0.5;
+    @apply text-[10px] font-mono uppercase tracking-[0.2em] text-muted-foreground/70 -mt-0.5;
   }
 
-  .grid-pattern {
-    background-image:
-      linear-gradient(to right, hsl(var(--border) / 0.4) 1px, transparent 1px),
-      linear-gradient(to bottom, hsl(var(--border) / 0.4) 1px, transparent 1px);
-    background-size: 32px 32px;
-    mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+  .nav-link {
+    @apply flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/40 transition-colors;
   }
-
-  .noise {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.025;
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' /%3E%3C/svg%3E");
+  .nav-link.active {
+    @apply text-foreground bg-accent/60;
   }
-
-  .ring-pulse {
-    position: relative;
-  }
-
-  .ring-pulse::before,
-  .ring-pulse::after {
+  .nav-link.active::before {
     content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    border: 2px solid hsl(var(--primary) / 0.5);
-    animation: pulse-ring 1.6s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
-  }
-
-  .ring-pulse::after {
-    animation-delay: 0.5s;
+    @apply absolute h-4 w-0.5 rounded-full bg-primary -ml-3;
   }
 
   .data-card {
-    @apply rounded-2xl border border-border/60 bg-card/40 backdrop-blur-xl p-5
-           transition-all duration-200 hover:border-border hover:bg-card/60;
+    @apply surface p-5;
   }
 
   .stat-num {
     @apply font-display text-2xl font-semibold tabular-nums tracking-tight;
   }
-
   .stat-label {
     @apply text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground;
   }
 
-  .nav-link {
-    @apply flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium
-           text-muted-foreground hover:text-foreground hover:bg-accent/60
-           transition-colors duration-150 cursor-pointer;
+  /* Background gradient lives on the main scroll container so it doesn't
+     repaint with the page or fight with overflow */
+  .app-bg {
+    background:
+      radial-gradient(at 20% -10%, hsl(158 95% 48% / 0.10) 0px, transparent 55%),
+      radial-gradient(at 85% -10%, hsl(217 91% 60% / 0.08) 0px, transparent 55%),
+      radial-gradient(at 50% 110%, hsl(280 80% 60% / 0.05) 0px, transparent 55%),
+      hsl(var(--background));
   }
 
-  .nav-link.active {
-    @apply text-foreground bg-accent;
+  .grid-pattern {
+    background-image:
+      linear-gradient(hsl(var(--border) / 0.4) 1px, transparent 1px),
+      linear-gradient(to right, hsl(var(--border) / 0.4) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, black 0%, transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, black 0%, transparent 80%);
   }
 
-  .nav-link.active svg {
-    @apply text-primary;
+  .pulse-dot {
+    position: relative;
+  }
+  .pulse-dot::after {
+    content: "";
+    position: absolute; inset: 0;
+    border-radius: 9999px;
+    background: hsl(var(--success));
+    opacity: 0.4;
+    animation: pulse-ring 1.6s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  }
+
+  @keyframes pulse-ring {
+    0%   { transform: scale(1);   opacity: 0.6; }
+    100% { transform: scale(2.6); opacity: 0;   }
+  }
+
+  .ring-pulse {
+    position: relative;
+    isolation: isolate;
+  }
+  .ring-pulse::before {
+    content: "";
+    position: absolute; inset: -6px;
+    border-radius: 9999px;
+    border: 2px solid hsl(var(--primary) / 0.6);
+    animation: pulse-ring 1.6s ease-out infinite;
+    z-index: -1;
   }
 }
 
-@font-face {
-  font-family: "Inter";
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src: url("https://rsms.me/inter/font-files/InterVariable.woff2") format("woff2");
-}
-
-@font-face {
-  font-family: "JetBrains Mono";
-  font-style: normal;
-  font-weight: 400 800;
-  font-display: swap;
-  src: url("https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono/fonts/webfonts/JetBrainsMono-Regular.woff2") format("woff2");
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  .text-balance { text-wrap: balance; }
 }

@@ -111,9 +111,11 @@ export const scheduledCalls = pgTable("scheduled_calls", {
   id: serial("id").primaryKey(),
   contactId: integer("contact_id").references(() => contacts.id, { onDelete: "set null" }),
   phone: text("phone").notNull(),
-  scheduledAt: bigint("scheduled_at", { mode: "number" }).notNull(),
-  note: text("note").default(""),
+  name: text("name").default(""),
+  scheduledFor: bigint("scheduled_for", { mode: "number" }).notNull(),
+  notes: text("notes").default(""),
   status: text("status").default("pending"),
+  notified: boolean("notified").default(false),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
 });
 
@@ -127,10 +129,12 @@ export const scripts = pgTable("scripts", {
 
 export const voicemails = pgTable("voicemails", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  audioPath: text("audio_path"),
+  fromNumber: text("from_number").notNull().default(""),
+  audioUrl: text("audio_url"),
   duration: integer("duration").default(0),
-  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  transcript: text("transcript").default(""),
+  read: boolean("read").default(false),
+  receivedAt: bigint("received_at", { mode: "number" }).notNull(),
 });
 
 export const dnc = pgTable("dnc", {

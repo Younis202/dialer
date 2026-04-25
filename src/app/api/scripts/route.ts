@@ -10,6 +10,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
+  if (!body.title || !body.body) return NextResponse.json({ error: "title and body required" }, { status: 400 });
   const [row] = await db
     .insert(scripts)
     .values({

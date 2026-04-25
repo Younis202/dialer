@@ -13,7 +13,6 @@ export interface ParsedPhone {
   international: string;
   type: string;
   isValid: boolean;
-  flag: string;
 }
 
 const COUNTRY_NAMES: Record<string, string> = {
@@ -38,15 +37,6 @@ const COUNTRY_NAMES: Record<string, string> = {
   GH: "Ghana", CI: "Ivory Coast", SN: "Senegal", UG: "Uganda",
 };
 
-export function flagEmoji(country: string) {
-  if (!country || country.length !== 2) return "";
-  const A = 0x1f1e6;
-  const codes = [...country.toUpperCase()].map(
-    (c) => A + c.charCodeAt(0) - 65
-  );
-  return String.fromCodePoint(...codes);
-}
-
 export function parsePhone(input: string, defaultCountry: CountryCode = "US"): ParsedPhone {
   const empty: ParsedPhone = {
     e164: input,
@@ -56,7 +46,6 @@ export function parsePhone(input: string, defaultCountry: CountryCode = "US"): P
     international: input,
     type: "unknown",
     isValid: false,
-    flag: "",
   };
   if (!input) return empty;
   try {
@@ -71,7 +60,6 @@ export function parsePhone(input: string, defaultCountry: CountryCode = "US"): P
       international: n.formatInternational(),
       type: n.getType() || "unknown",
       isValid: n.isValid(),
-      flag: flagEmoji(country),
     };
   } catch {
     return empty;

@@ -2,6 +2,7 @@
 import { Delete } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ParsedPhone } from "@/lib/phone";
+import { Flag } from "@/components/ui/flag";
 import { cn } from "@/lib/utils";
 
 export function NumberDisplay({
@@ -17,8 +18,8 @@ export function NumberDisplay({
 }) {
   return (
     <div className="relative">
-      <div className="flex items-center justify-between gap-2 mb-2 px-1">
-        <div className="flex items-center gap-2 min-h-[20px]">
+      <div className="flex items-center justify-between gap-2 mb-2 px-1 min-h-[20px]">
+        <div className="flex items-center gap-2">
           <AnimatePresence mode="wait">
             {parsed.country && (
               <motion.div
@@ -28,7 +29,7 @@ export function NumberDisplay({
                 exit={{ opacity: 0, x: 8 }}
                 className="flex items-center gap-1.5"
               >
-                <span className="text-base leading-none">{parsed.flag}</span>
+                <Flag country={parsed.country} size="sm" />
                 <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
                   {parsed.countryName}
                 </span>

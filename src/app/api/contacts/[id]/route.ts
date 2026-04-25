@@ -13,10 +13,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json();
-  const allowed = ["name", "phone", "email", "company", "country", "tags", "notes", "favorite"];
-  const patch: any = {};
-  for (const k of allowed) if (k in body) patch[k] = body[k];
-  const [row] = await db.update(contacts).set(patch).where(eq(contacts.id, parseInt(id, 10))).returning();
+  const update: any = {};
+  for (const k of ["name", "phone", "email", "company", "country", "tags", "notes", "favorite"]) {
+    if (k in body) update[k] = body[k];
+  }
+  const [row] = await db.update(contacts).set(update).where(eq(contacts.id, parseInt(id, 10))).returning();
   return NextResponse.json(row);
 }
 
